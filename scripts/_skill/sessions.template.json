@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "version": 1,
+    "note": "会话清单 —— 全项目唯一需要你改的文件。填完 peer.uid / name 后运行「生成会话清单.cmd」，或直接跑 node scripts/build_sessions.mjs --mkdir。",
+    "schema": {
+      "key": "会话标识，只用字母/数字/下划线，全局唯一；也是更新脚本 --session 的值",
+      "label": "顶部切换条上的短标签，如「微博」「B站」",
+      "title": "页面标题里用的名字，缺省时为「<label>私信备份」",
+      "dir": "数据目录（相对项目根），如 data / bili / data2",
+      "platform": "用哪个抓取脚本：weibo（微博私信）或 bili（B站私信）",
+      "peer": "【必填】要备份的聊天对象：uid = 对方的数字 ID，name = 对方昵称（用于页面显示）",
+      "self": "【可留空】你自己：uid / name。留空时能自动探测的会自己探",
+      "skip": "图片索引跳过的文件名前缀（头像/表情包，不外传云端）。缺省按平台给默认值",
+      "autoReply": "对方设置的自动回复原文（可留空）。填了才能用「一键隐藏自动回复」",
+      "empty": "没有数据文件时页面显示的引导语，缺省自动生成",
+      "globals": "承载数据的全局变量名，缺省自动按 key 生成。weibo / bili 两个内置 key 用历史短名，不要改",
+      "builtin": "true = 查看备份.html 里已有静态 <script> 标签（只有 weibo / bili 是 true）"
+    },
+    "how_to_find_uid": {
+      "weibo": "打开对方微博主页，地址栏 weibo.com/u/1234567890 里那串数字就是 uid",
+      "bili": "打开对方空间，地址栏 space.bilibili.com/1234567 里那串数字就是 uid（也叫 mid）"
+    }
+  },
+  "sessions": [
+    {
+      "key": "weibo",
+      "label": "微博",
+      "title": "微博私信备份",
+      "dir": "data",
+      "platform": "weibo",
+      "peer": {
+        "uid": "",
+        "name": ""
+      },
+      "self": {
+        "uid": "",
+        "name": ""
+      },
+      "autoReply": "",
+      "empty": "未找到数据文件 <code>data/messages.js</code><br>请先运行一次「更新备份.cmd」"
+    },
+    {
+      "key": "bili",
+      "label": "B站",
+      "title": "B站私信备份",
+      "dir": "bili",
+      "platform": "bili",
+      "peer": {
+        "uid": "",
+        "name": ""
+      },
+      "self": {
+        "uid": "",
+        "name": ""
+      },
+      "autoReply": "",
+      "empty": "未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「更新B站备份.cmd」（首次需要在弹出的浏览器窗口里扫码登录 B站）"
+    }
+  ]
+}

@@ -1,0 +1,3670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>私信备份</title>
+<style>
+:root{
+  --bg:#f4f6f9; --panel:#fff; --text:#1f2329; --muted:#8b939c; --line:#e6e9ee;
+  --peer:#ffffff; --peer-text:#1f2329; --me:linear-gradient(135deg,#4f7cff,#7b5cff); --me-text:#fff;
+  --accent:#4f7cff; --chip:#eef1f6; --chip-on:#4f7cff; --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.05);
+  --mark:#ffe58a;
+  --c-me:#4f7cff; --c-peer:#e8507a;
+  /* 链接文字色：要与底色有足够对比度（原来的 #4f7cff 在浅灰底上只有 ~2.9:1） */
+  --link:#1d4ed8; --link-ink:#1b3a9e;
+  /* 比 --muted 再深一档的「弱化但仍读得清」文字色。
+     --muted(#8b939c) 落在浅底(#f4f6f9)上只有 2.87:1 —— 做装饰性的次要文字没问题，
+     但凡是要人读的正文（比如「这条消息已隐藏」占位条）就得用这个：5.4:1。
+     别再往 --muted 上写正文，量过对比度会打脸（2026-09-16 被 shot_hide.mjs 抓到）。 */
+  --muted-strong:#5f666e;
+}
+html[data-theme="dark"]{
+  --bg:#101216; --panel:#191c21; --text:#e7eaee; --muted:#828a95; --line:#262a31;
+  --peer:#20242a; --peer-text:#e7eaee; --me:linear-gradient(135deg,#3a5fd0,#5a45c9); --me-text:#fff;
+  --accent:#6f92ff; --chip:#22262d; --chip-on:#4f7cff; --shadow:0 1px 2px rgba(0,0,0,.3);
+  --mark:#7a6412;
+  --c-me:#6f92ff; --c-peer:#ff7ba1;
+  --link:#9db9ff; --link-ink:#1b3a9e;
+  --muted-strong:#a3abb6;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Inter,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent)}
+
+/* ---------- 三栏骨架：左状态栏 · 中聊天 · 右时间轴 ---------- */
+.layout{display:grid;grid-template-columns:276px minmax(0,1fr);min-height:100vh}
+
+/* ---------- 左侧常驻状态栏 ---------- */
+.sidebar{
+  position:sticky;top:0;height:100vh;overflow-y:auto;overscroll-behavior:contain;z-index:50;
+  display:flex;flex-direction:column;gap:16px;padding:18px 16px;
+  background:var(--panel);border-right:1px solid var(--line);
+}
+/* ---------- 顶部数据源切换（微博 / B站）---------- */
+.srcsw{display:flex;gap:4px;padding:4px;border-radius:11px;border:1px solid var(--line);
+  background:var(--panel);margin-bottom:11px}
+.srcsw button{flex:1;min-width:0;height:31px;border:0;border-radius:8px;background:transparent;
+  color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;overflow:hidden}
+.srcsw button[aria-pressed="true"]{background:var(--chip-on);color:#fff}
+.srcsw button:disabled{opacity:.45;cursor:not-allowed}
+.srcsw button[data-empty]{opacity:.55}
+.srcsw button .n{font-weight:400;font-size:11px;opacity:.8}
+/* ---------- B站卡片（分享视频/专栏/动态/推送/通知）---------- */
+.wcard.bc{border-color:color-mix(in srgb, var(--c-peer) 42%, var(--line))}
+.wcard.bc .wcard-h{color:var(--c-peer)}
+.wcard.bc .wcard-h .wa{font-weight:500;opacity:.85}
+.wcard-t.wtitle{font-weight:600}
+.side-top{display:flex;align-items:center;gap:8px}
+.brand{font-weight:700;font-size:15px;letter-spacing:.2px;display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{
+  width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent);
+}
+.iconbtn{
+  border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;
+  height:30px;padding:0 10px;cursor:pointer;font-size:12.5px;font-family:inherit;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;
+}
+.iconbtn:hover{border-color:var(--accent);color:var(--accent)}
+.iconbtn.wide{width:100%;height:32px}
+.stats{font-size:12px;color:var(--muted);line-height:1.75}
+.stats span{display:block}
+.stats b{color:var(--text);font-weight:600}
+.side-sec{display:flex;flex-direction:column;gap:8px}
+.sec-t{font-size:10.5px;font-weight:700;letter-spacing:.7px;color:var(--muted);opacity:.75}
+.search{position:relative;display:flex;align-items:center}
+.search input{
+  width:100%;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--bg);
+  color:var(--text);padding:0 32px;font-size:13px;font-family:inherit;outline:none;
+}
+.search input:focus{border-color:var(--accent);background:var(--panel)}
+.search .ico{position:absolute;left:10px;color:var(--muted);font-size:13px;pointer-events:none}
+.search .clr{position:absolute;right:6px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:4px 6px;display:none}
+.hitrow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px}
+.found{font-size:11.5px;color:var(--muted);line-height:1.5}
+/* 上下文提示行：里面写着「怎么恢复被隐藏的消息」，是要人读的说明文字，
+   所以用 --muted-strong 并且不再叠 opacity（叠加等于又把对比度打回去）。
+   原来 --muted + .85 在浅底上约 2.4:1，属于"看得见但费劲"。 */
+.searchhint{display:none;margin-top:6px;font-size:11px;line-height:1.5;color:var(--muted-strong)}
+/* 换日规则提示：是要人读的正文 → --muted-strong（--muted 在浅底只有 2.87:1） */
+.hintline{margin-top:6px;font-size:11px;line-height:1.55;color:var(--muted-strong)}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.chip{
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;
+  height:32px;padding:0 8px;font-size:12.5px;font-family:inherit;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.full{grid-column:1 / -1}
+.chip[aria-pressed="true"]{background:var(--chip-on);border-color:var(--chip-on);color:#fff;font-weight:600}
+input[type=date]{
+  width:100%;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--panel);
+  color:var(--text);padding:0 9px;font-size:12.5px;font-family:inherit;outline:none;
+}
+input[type=date]:focus{border-color:var(--accent)}
+.side-foot{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:auto;padding-top:6px}
+
+/* ---------- 右侧月份时间轴（宽屏才显示） ---------- */
+.rail{
+  display:none;position:sticky;top:0;height:100vh;overflow-y:auto;overscroll-behavior:contain;
+  flex-direction:column;gap:5px;padding:18px 12px;
+  background:var(--panel);border-left:1px solid var(--line);
+}
+.rail .sec-t{padding:0 9px 4px}
+#months{display:flex;flex-direction:column;gap:4px}
+.mo{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 9px;
+  border-radius:8px;cursor:pointer;color:var(--muted);font-size:12px;white-space:nowrap;
+  user-select:none;
+}
+.mo:hover{background:var(--bg);color:var(--text)}
+.mo.on{background:color-mix(in srgb,var(--accent) 15%,transparent);color:var(--accent);font-weight:600}
+.mo i{font-style:normal;font-size:10.5px;opacity:.65}
+
+/* ---------- 聊天区 ---------- */
+main{width:100%;max-width:1000px;margin:0 auto;padding:22px 28px 110px}
+/* 分隔条上的日期是要人读的正文：用 --muted-strong（--muted 在白底药丸上只有 3.1:1）。
+   这里只改字色，横线是 .day::before/::after 用 var(--line) 画的，不受影响。 */
+.day{display:flex;align-items:center;gap:10px;margin:22px 0 14px;color:var(--muted-strong);font-size:12px}
+.day::before,.day::after{content:"";flex:1;height:1px;background:var(--line)}
+.day span{padding:2px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line)}
+.msg{display:flex;gap:9px;margin:11px 0;align-items:flex-start}
+.msg.me{flex-direction:row-reverse}
+.av{
+  width:34px;height:34px;border-radius:50%;flex:none;object-fit:cover;background:var(--chip);
+  border:1px solid var(--line);
+}
+.av-fb{
+  width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  background:var(--chip);color:var(--muted);font-size:13px;font-weight:700;border:1px solid var(--line);
+}
+.body{max-width:min(70%,620px);display:flex;flex-direction:column;gap:4px}
+.msg.me .body{align-items:flex-end}
+.meta{font-size:11px;color:var(--muted);padding:0 4px;display:flex;gap:7px;align-items:center}
+.bubble{
+  background:var(--peer);color:var(--peer-text);border:1px solid var(--line);border-radius:14px;
+  padding:8px 12px;box-shadow:var(--shadow);word-break:break-word;white-space:pre-wrap;
+  border-top-left-radius:5px;
+}
+.msg.me .bubble{
+  background:var(--me);color:var(--me-text);border:0;border-top-right-radius:5px;border-top-left-radius:14px;
+}
+.bubble.plain{padding:0;background:transparent!important;border:0!important;box-shadow:none!important}
+.bubble.sys{background:transparent;border:1px dashed var(--line);color:var(--muted);font-size:12.5px;box-shadow:none}
+/* 透明气泡（.plain = 只有图/卡片没有文字，.sys = 系统提示）**没有**紫渐变底，
+   所以不能再沿用「我方 = 白字」那套：白字会直接落在浅色页面上，彻底看不见
+   （实测分享卡片正好命中这条路径：有封面图 + 无文字 → .plain → 链接与标题全白）。
+   这里把字色还原成正常正文色；带底的紫渐变气泡照旧用白字。 */
+.msg.me .bubble.plain{color:var(--text)}
+.msg.me .bubble.sys{color:var(--muted)}
+
+/* 「已隐藏」占位条：**故意不用 .bubble 类** —— 它不是气泡，没有底色，
+   也就不会撞上「我方 = 白字」那套只对画了底的气泡成立的装饰（.plain 的前车之鉴）。
+   字色用 --muted-strong 而不是 --muted：这是要人读的正文，
+   --muted 在浅底上只有 2.87:1（实测，被 shot_hide.mjs 的对比度断言抓到过）。 */
+.hidb{
+  display:inline-flex;align-items:center;gap:8px;padding:4px 10px;max-width:100%;
+  border:1px dashed var(--line);border-radius:10px;
+  background:transparent!important;box-shadow:none!important;
+  color:var(--muted-strong);font-size:12.5px;line-height:1.6;cursor:pointer;
+}
+.hidb:hover{border-color:var(--accent);color:var(--text)}
+/* 我方那一侧也只是换了个位置，字色必须显式写死：
+   .msg.me .bubble{color:var(--me-text)} 的白字是给紫渐变底准备的，这里没有底。 */
+.msg.me .hidb{color:var(--muted-strong)}
+.msg.me .hidb:hover{color:var(--text)}
+.hidb .hbtn{
+  border:0;background:none;color:var(--link);font:inherit;font-size:12.5px;
+  cursor:pointer;padding:0 2px;text-decoration:underline;
+}
+.hidb .hbtn:hover{color:var(--accent)}
+.mutedph{opacity:.72}
+
+/* 右键菜单 */
+.cmenu{
+  position:fixed;z-index:70;min-width:158px;padding:4px;
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);
+}
+.cmenu[hidden]{display:none}
+.cmenu button{
+  display:block;width:100%;text-align:left;border:0;background:none;color:var(--text);
+  font:inherit;font-size:12.5px;padding:7px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;
+}
+.cmenu button:hover{background:var(--chip);color:var(--accent)}
+.cmenu button:disabled{opacity:.45;cursor:default}
+.cmenu .sep{height:1px;background:var(--line);margin:4px 6px}
+
+/* 轻提示（单例，挂在 body 上） */
+.toast{
+  position:fixed;left:50%;bottom:26px;z-index:80;
+  transform:translateX(-50%) translateY(8px);
+  background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;
+  padding:8px 14px;font-size:12.5px;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 隐藏按钮只在有隐藏项时出现（.chip 没有显式 display，这里显式兜一层） */
+.chip[hidden]{display:none!important}
+
+.imgs{display:flex;flex-wrap:wrap;gap:6px}
+.imgs img{
+  max-width:240px;max-height:240px;border-radius:12px;border:1px solid var(--line);cursor:zoom-in;
+  background:var(--panel);display:block;
+}
+.imgs img.emoji{max-width:130px;max-height:130px;border-radius:8px;background:transparent;border:0}
+/* 原图失效（备份时就 404，本地也没落盘）时的占位 */
+.imgdead{
+  display:inline-flex;align-items:center;justify-content:center;min-width:112px;height:68px;
+  padding:0 12px;border:1px dashed var(--line);border-radius:12px;
+  background:var(--bg);color:var(--muted);font-size:12px;
+}
+/* 图内文字（OCR）命中时的展示 */
+.imgwrap{display:flex;flex-direction:column;gap:4px;align-items:flex-start;max-width:240px}
+.ocrtip{
+  font-size:11.5px;line-height:1.45;color:var(--muted);background:var(--bg);
+  border:1px solid var(--line);padding:3px 8px;border-radius:7px;
+  max-width:100%;word-break:break-word;
+}
+.imgs img.ocrhit{outline:2px solid var(--c-me);outline-offset:1px}
+.imgs img.vlmhit{outline:2px solid var(--c-peer);outline-offset:1px}
+/* 以下「我方 = 半透明白 + 白字」的装饰只对**真正画了紫渐变底**的气泡生效；
+   透明气泡（.plain / .sys）走上面的基础样式，否则浅色主题下就是白字白底。 */
+.msg.me .bubble:not(.plain):not(.sys) .ocrtip{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.24);color:rgba(255,255,255,.92)}
+.msg.me .bubble:not(.plain):not(.sys) .ocrtip mark{background:rgba(255,255,255,.42);color:#123}
+.recalled{font-style:italic;opacity:.7}
+mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
+
+/* 链接 / 卡片 / 视频 */
+.links{display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:12.5px}
+.links a{
+  display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:5px 9px;border-radius:8px;background:rgba(127,127,127,.10);color:var(--link);text-decoration:none;
+}
+/* 正文里的链接胶囊不用「白字压半透明白底」（对比度仅 ~2.3:1，看不清），
+   我方带底气泡上一律改成白底 + 深蓝字 */
+.msg.me .bubble:not(.plain):not(.sys) .links a{background:rgba(255,255,255,.94);color:var(--link-ink)}
+.card{
+  border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:6px;background:var(--panel);
+  display:flex;flex-direction:column;gap:5px;max-width:100%;
+}
+.card-h{font-size:12px;font-weight:700;opacity:.85}
+.card-t{font-size:12.5px;opacity:.9;white-space:pre-wrap;max-height:9em;overflow:auto}
+.card-u{font-size:11.5px;opacity:.65;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 内联表情：官方微博表情图（原图 96×96 / 20×20，这里统一缩到 1.4em 跟随文字） */
+.face{
+  height:1.4em;width:auto;vertical-align:-0.26em;margin:0 1px;
+  display:inline-block;border-radius:3px;
+}
+/* 正文里的网址：可点击，避免与下方链接区重复 */
+.txtlink{color:inherit;text-decoration:underline;text-underline-offset:2px;word-break:break-all}
+/* 分享微博卡片 */
+.wcard{
+  border:1px solid var(--line);border-radius:11px;padding:9px 11px;margin-top:6px;
+  background:rgba(127,127,127,.05);display:flex;flex-direction:column;gap:5px;max-width:100%;
+}
+.msg.me .bubble:not(.plain):not(.sys) .wcard{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.25)}
+.wcard-h{font-size:12px;font-weight:700;opacity:.92;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.wcard-h .wt{font-weight:400;opacity:.6;font-size:11px}
+.wcard-t{font-size:12.5px;line-height:1.55;opacity:.92;white-space:pre-wrap;word-break:break-word}
+.wcard-btn{
+  align-self:flex-start;border:1px solid var(--line);background:transparent;color:inherit;
+  border-radius:999px;font-size:11.5px;padding:2px 11px;cursor:pointer;font-family:inherit;
+  opacity:.75;line-height:1.7;
+}
+.wcard-btn:hover{border-color:var(--accent);color:var(--accent);opacity:1}
+.msg.me .bubble:not(.plain):not(.sys) .wcard-btn{border-color:rgba(255,255,255,.4)}
+/* 折叠态：卡片默认只露摘要两行 + 小图，点「展开详情」看全部 */
+.bubble.has-card:not(.open) .wcard-t{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.bubble.has-card:not(.open) .imgs img{max-height:108px;max-width:108px;border-radius:9px}
+.wcard-link{
+  align-self:flex-start;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;
+  padding:3px 10px;border-radius:999px;background:rgba(127,127,127,.12);color:var(--link);max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.wcard-link:hover{text-decoration:underline}
+/* 我方紫渐变气泡上：改用「白底药丸 + 深蓝字」。
+   原先是半透明白底 + 白字，实测对比度只有 ~2.3:1，基本看不清。 */
+.msg.me .bubble:not(.plain):not(.sys) .wcard-link{background:rgba(255,255,255,.94);color:var(--link-ink)}
+/* 搜索导航 */
+.hitnav{display:none;align-items:center;gap:4px}
+.hitnav.on{display:inline-flex}
+.hitnav button{
+  border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;
+  width:26px;height:30px;cursor:pointer;font-size:12px;line-height:1;
+}
+.hitnav button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.hitnav button:disabled{opacity:.35;cursor:default}
+.hitnav .pos{font-size:12px;color:var(--muted);min-width:44px;text-align:center}
+.tag{
+  display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;
+  background:rgba(127,127,127,.14);opacity:.85;margin-bottom:2px;
+}
+.msg.me .bubble:not(.plain):not(.sys) .tag{background:rgba(255,255,255,.2)}
+.vid{font-size:12.5px;opacity:.85;margin-top:4px}
+
+/* 加载更多 */
+.more{display:flex;justify-content:center;margin:16px 0}
+.more button{
+  border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:999px;
+  height:32px;padding:0 18px;cursor:pointer;font-size:12.5px;
+}
+.more button:hover{border-color:var(--accent);color:var(--accent)}
+.empty{text-align:center;color:var(--muted);padding:60px 0;font-size:13px}
+
+/* 悬浮按钮：宽屏用左栏底部按钮，窄屏（状态栏在顶部）才浮出来 */
+.fab{display:none}
+.fab button{
+  width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel);
+  color:var(--text);cursor:pointer;box-shadow:var(--shadow);font-size:15px;
+}
+.fab button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---------- 互动统计面板（按天折线图） ---------- */
+#stat{
+  position:fixed;inset:0;z-index:180;display:none;align-items:center;justify-content:center;
+  background:rgba(10,12,16,.55);padding:22px;
+}
+#stat.on{display:flex}
+.statbox{
+  width:min(1120px,96vw);max-height:92vh;overflow:auto;background:var(--panel);color:var(--text);
+  border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.4);
+  display:flex;flex-direction:column;
+}
+.stat-h{
+  display:flex;align-items:center;gap:10px;padding:14px 20px 12px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--panel);z-index:2;
+}
+.stat-h h2{margin:0;font-size:15px;font-weight:700;flex:1;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stat-h h2 em{font-style:normal;font-size:11.5px;font-weight:400;color:var(--muted)}
+.stat-body{padding:15px 20px 20px;display:flex;flex-direction:column;gap:13px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:9px 12px;background:var(--bg);min-width:0}
+.kpi b{display:block;font-size:20px;line-height:1.3;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.kpi b i{font-style:normal;font-size:11.5px;color:var(--muted);margin-left:3px;font-weight:400}
+.kpi span{display:block;font-size:11.5px;color:var(--muted);line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kpi.me b{color:var(--c-me)} .kpi.peer b{color:var(--c-peer)}
+.ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{
+  border:0;background:var(--panel);color:var(--muted);font:inherit;font-size:12.5px;
+  padding:0 12px;height:30px;cursor:pointer;white-space:nowrap;
+}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button:hover{color:var(--accent)}
+.seg button[aria-pressed="true"]{background:var(--chip-on);color:#fff;font-weight:600}
+.tog{
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:9px;
+  height:30px;padding:0 11px;font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;
+}
+.tog:hover{border-color:var(--accent);color:var(--accent)}
+.tog[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);align-items:center;margin-left:auto;white-space:nowrap}
+.legend i{display:inline-block;width:16px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.chartwrap{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:6px}
+#chart{display:block;max-width:100%}
+#tip{
+  position:absolute;pointer-events:none;z-index:3;background:var(--panel);border:1px solid var(--line);
+  border-radius:9px;padding:7px 10px;font-size:12px;box-shadow:var(--shadow);white-space:nowrap;
+  display:none;line-height:1.7;font-variant-numeric:tabular-nums;
+}
+#tip.on{display:block}
+#tip b{font-variant-numeric:tabular-nums}
+#tip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.chart-hint{display:none;font-size:12px;color:var(--muted-strong);line-height:1.65;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:7px 11px}
+.chart-hint.on{display:block}
+/* 换日规则的附带说明：同一套配色，用虚线分隔，不做降低不透明度的处理
+   （叠 opacity 会把本来刚够的对比度又压下去，见 .mutedph 那次的教训） */
+.cutnote{display:block;margin-top:5px;padding-top:5px;border-top:1px dashed var(--line)}
+.caliber{font-size:12px;color:var(--muted);line-height:1.75;border:1px dashed var(--line);border-radius:11px;padding:10px 13px}
+.caliber summary{cursor:pointer;color:var(--text);font-weight:600;font-size:12.5px;outline:none}
+.caliber ul{margin:7px 0 0;padding-left:17px}
+.caliber li{margin:3px 0}
+.caliber code{background:var(--chip);border-radius:4px;padding:1px 5px;font-size:11.5px;font-family:ui-monospace,Consolas,monospace}
+.caliber .em{color:var(--text);font-weight:600}
+@media (max-width:760px){
+  #stat{padding:8px;align-items:flex-start}
+  .statbox{max-height:96vh;width:100%}
+  .stat-body{padding:12px 12px 18px;gap:10px}
+  .stat-h{padding:11px 13px 10px}
+  .kpis{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi b{font-size:17px}
+  .legend{margin-left:0;order:9;width:100%}
+}
+
+/* 灯箱 */
+#lb{
+  position:fixed;inset:0;z-index:200;background:rgba(10,12,16,.9);display:none;
+  align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:26px;
+}
+#lb.on{display:flex}
+#lb img{max-width:92vw;max-height:80vh;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+#lb .bar{display:flex;gap:10px;align-items:center;color:#dfe4ea;font-size:12.5px}
+#lb .bar a,#lb .bar button{
+  background:rgba(255,255,255,.12);border:0;color:#fff;border-radius:8px;padding:6px 12px;
+  cursor:pointer;text-decoration:none;font-size:12.5px;font-family:inherit;
+}
+#lb .bar a:hover,#lb .bar button:hover{background:rgba(255,255,255,.22)}
+/* 宽屏：显示右侧时间轴；中屏：只留左侧栏；窄屏：状态栏回到顶部横排 */
+@media (min-width:1340px){
+  .layout{grid-template-columns:276px minmax(0,1fr) 190px}
+  .rail{display:flex}
+}
+@media (max-width:980px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .sidebar{
+    /* 窄屏下侧栏改成顶部横条，但**必须限高**：
+       加了「高级筛选 / 导出」两个折叠小节之后，各项在窄屏上各占一整行，
+       不限高的话 sticky 横条会长到 430px 以上，把手机屏幕挡住一大半
+       （移动端专项测试实测 437px，就是这么发现的）。 */
+    position:sticky;top:0;height:auto;max-height:190px;overflow-y:auto;overflow-x:hidden;
+    z-index:60;
+    flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 14px;
+    border-right:0;border-bottom:1px solid var(--line);
+    background:color-mix(in srgb,var(--panel) 92%,transparent);
+    backdrop-filter:saturate(180%) blur(14px);
+    scrollbar-width:thin;
+  }
+  .side-top{flex:1 1 auto;min-width:0}
+  .stats{flex:1 1 100%;order:9;line-height:1.6}
+  .side-sec{flex:1 1 auto;min-width:210px}
+  .side-sec .sec-t{display:none}
+  .side-foot{margin-top:0;padding-top:0;grid-template-columns:auto auto}
+  .side-foot .iconbtn{width:auto;padding:0 12px}
+  .fab{display:flex;position:fixed;right:22px;bottom:22px;z-index:60;flex-direction:column;gap:8px}
+  main{padding:16px 14px 90px}
+}
+@media (max-width:640px){
+  .body{max-width:calc(100% - 50px)}
+  .imgs img{max-width:170px;max-height:170px}
+  /* 手机端把状态栏压到最薄：统计只留一行，筛选改为横向滚动一行，
+     再把 sticky 横条限到 150px（超出的部分在里面滚动） */
+  .sidebar{gap:8px;padding:9px 12px;max-height:150px}
+  .stats{font-size:11.5px;line-height:1.5}
+  .stats .s2,.stats .s3,.stats .s4{display:none}
+  .side-sec{min-width:100%}
+  .hitrow{min-height:0}
+  .chips{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;scrollbar-width:none;padding-bottom:1px}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:0 0 auto;height:30px;padding:0 12px}
+  .side-foot{grid-template-columns:1fr 1fr;width:100%}
+  .side-foot .iconbtn{width:100%}
+}
+
+/* ---------- 搜索结果：展开上下文 ---------- */
+:root{ --hit:#e08a12; --ctxline:#c8cfda; }
+html[data-theme="dark"]{ --hit:#ffb457; --ctxline:#333941; }
+
+/* 命中消息下方的操作条 */
+.ctxbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;max-width:100%;margin-top:2px;padding:0 4px}
+.msg.me .ctxbar{justify-content:flex-end}
+.ctxbar button{
+  font:inherit;font-size:11.5px;line-height:1.5;padding:2px 10px;border-radius:999px;
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;
+  white-space:nowrap;transition:border-color .15s,color .15s;
+}
+.ctxbar button:hover{border-color:var(--hit);color:var(--hit)}
+.ctxbar button i,.ctxmore button i{font-style:normal;opacity:.72}
+.ctxbar .ctxnum{font-size:11px;color:var(--muted);opacity:.85}
+
+/* 上下文区块两端：「加载更多」/「到头了」 */
+.ctxmore{display:flex;justify-content:center;margin:9px 0}
+.ctxmore button{
+  font:inherit;font-size:11.5px;line-height:1.5;padding:3px 14px;border-radius:999px;
+  border:1px dashed var(--line);background:transparent;color:var(--muted);cursor:pointer;
+  transition:border-color .15s,color .15s;
+}
+.ctxmore button:hover{border-color:var(--accent);color:var(--accent);border-style:solid}
+.ctxmore .ctxend{font-size:11px;color:var(--muted);opacity:.7;letter-spacing:.3px}
+
+/* 上下文消息：整块淡化 + 一条竖线，和「搜索结果」区分开 */
+.msg.ctx .body{opacity:.72;border-left:2px solid var(--ctxline);padding-left:9px}
+.msg.ctx.me .body{border-left:0;border-right:2px solid var(--ctxline);padding-left:0;padding-right:9px}
+.msg.ctx .av{opacity:.5}
+
+/* 当前展开上下文的那条命中消息（高亮） */
+.msg.hit{
+  position:relative;border-radius:12px;padding:7px 9px;margin:9px -9px;
+  background:color-mix(in srgb,var(--hit) 9%,transparent);
+  box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--hit) 50%,transparent);
+}
+.msg.hit .body{opacity:1}
+.msg.hit .av{opacity:1}
+.msg.hit .meta{color:var(--hit)}
+.hitbadge{
+  font-size:10px;font-weight:700;line-height:1.5;padding:0 6px;border-radius:999px;
+  background:var(--hit);color:#fff;letter-spacing:.2px;
+}
+/* 落在别人上下文区域里的另一条搜索结果：细描边提示 */
+.msg.hitsoft{
+  border-radius:12px;padding:7px 9px;margin:9px -9px;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--hit) 30%,transparent);
+}
+
+/* ==========================================================
+   扩展功能（2026-09-16 新增）
+   ----------------------------------------------------------
+   · 高级筛选（发送者 / 类型 / 日期区间 / 正则 / 索引命中）
+   · 导出（HTML / Markdown / TXT / JSON / JSONL，可打码、可加密）
+   · 日历热力图 · 聊天节律 · 高频词云
+   全部纯本地运算：不联网、无外部依赖、不上传任何数据。
+   ========================================================== */
+
+/* 热力图色阶 + 状态色（浅色主题） */
+:root{
+  --hm0:#e9edf3; --hm1:#c3d6f6; --hm2:#8db1ec; --hm3:#4f7cff; --hm4:#2b4ec4;
+  --ok:#0f7a4d; --bad:#c62828;
+}
+html[data-theme="dark"]{
+  --hm0:#1b1f26; --hm1:#24395c; --hm2:#2f5aa8; --hm3:#4f7cff; --hm4:#9dbcff;
+  --ok:#4ade80; --bad:#ff8f8f;
+}
+
+/* ---------- 侧栏里的折叠小节 ---------- */
+.fold{border:1px solid var(--line);border-radius:10px;background:var(--bg);overflow:hidden}
+.fold>summary{
+  cursor:pointer;list-style:none;padding:8px 11px;font-size:12.5px;font-weight:600;color:var(--text);
+  display:flex;align-items:center;gap:7px;outline:none;user-select:none;min-height:34px;
+}
+.fold>summary::-webkit-details-marker{display:none}
+.fold>summary::before{content:"▸";font-size:10px;color:var(--muted);transition:transform .15s;flex:0 0 auto}
+.fold[open]>summary::before{transform:rotate(90deg)}
+.fold>summary:hover{color:var(--accent)}
+.fold .cnt{
+  margin-left:auto;font-size:10.5px;font-weight:700;line-height:1.7;padding:0 7px;border-radius:999px;
+  background:var(--chip-on);color:#fff;
+}
+.fold .cnt[hidden]{display:none}
+.fold .fbody{padding:1px 11px 11px;display:flex;flex-direction:column;gap:8px}
+
+/* ---------- 侧栏折叠小节里的表单控件（高级筛选 / 导出 共用） ---------- */
+.fbody .frow{display:flex;align-items:center;gap:7px}
+.fbody .frow>label{flex:0 0 42px;font-size:11.5px;color:var(--muted)}
+.fbody select,.fbody input{
+  flex:1 1 auto;min-width:0;height:29px;font:inherit;font-size:12.5px;
+  border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);padding:0 7px;
+}
+.fbody input[type=date]{padding:0 4px}
+.fbody .two{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.fbody .minis{display:flex;flex-wrap:wrap;gap:6px}
+.mini{
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;
+  min-height:28px;padding:1px 10px;font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap;
+  transition:border-color .15s,color .15s,background .15s;
+}
+.mini:hover{border-color:var(--accent);color:var(--accent)}
+.mini[aria-pressed="true"]{border-color:transparent;background:var(--chip-on);color:#fff;font-weight:600}
+.rexerr{font-size:11px;color:var(--bad);line-height:1.5}
+.rexerr[hidden]{display:none}
+
+/* ---------- 导出 ---------- */
+.expgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.expgrid button{
+  border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:9px;
+  min-height:34px;font:inherit;font-size:12px;cursor:pointer;padding:2px 8px;
+  transition:border-color .15s,color .15s;
+}
+.expgrid button:hover{border-color:var(--accent);color:var(--accent)}
+.expgrid button.primary{grid-column:1 / -1;background:var(--chip-on);color:#fff;border-color:transparent;font-weight:600}
+.expgrid button.primary:hover{filter:brightness(1.07);color:#fff}
+.exprow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.exprow label{font-size:11.5px;color:var(--muted)}
+.exprow input[type=password]{
+  flex:1 1 90px;min-width:0;height:29px;font:inherit;font-size:12.5px;
+  border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);padding:0 7px;
+}
+.expmsg{font-size:11.5px;color:var(--muted);line-height:1.6;word-break:break-word}
+.expmsg.ok{color:var(--ok)}
+.expmsg.bad{color:var(--bad)}
+.expmsg[hidden]{display:none}
+
+/* ---------- 统计面板里的新增小节 ---------- */
+.stsec{border-top:1px dashed var(--line);padding-top:12px;display:flex;flex-direction:column;gap:9px}
+.stsec>h3{
+  margin:0;font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+}
+.stsec>h3 em{font-style:normal;font-size:11.5px;font-weight:400;color:var(--muted)}
+.stsec .seg button{height:27px;font-size:12px;padding:0 10px}
+
+/* 日历热力图 */
+.hmwrap{overflow-x:auto;padding:2px 0 4px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.hminner{display:inline-block;padding:8px 10px 6px;min-width:100%}
+.hmsvg{display:block}
+.hmsvg rect.c{cursor:pointer;rx:2.5}
+.hmsvg rect.c:hover{stroke:var(--text);stroke-width:1.6}
+.hmleg{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);flex-wrap:wrap;margin-top:5px}
+.hmleg i{display:inline-block;width:11px;height:11px;border-radius:2.5px;vertical-align:-1px}
+.hmleg .sp{flex:1 1 auto}
+
+/* 聊天节律 */
+.rhgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:11px}
+.rhbox{border:1px solid var(--line);border-radius:11px;background:var(--bg);padding:10px 12px;min-width:0}
+.rhbox h4{margin:0 0 6px;font-size:12.5px;font-weight:600;color:var(--text)}
+.rhbox .big{font-size:19px;font-weight:700;letter-spacing:-.3px;font-variant-numeric:tabular-nums;line-height:1.35}
+.rhbox .big i{font-style:normal;font-size:11.5px;font-weight:400;color:var(--muted);margin-left:4px}
+.rhbox .sub{font-size:11.5px;color:var(--muted);line-height:1.65;margin-top:4px}
+.rhbox .sub b{color:var(--text)}
+.rhbars{display:flex;align-items:flex-end;gap:2px;height:54px;margin-top:7px}
+.rhbars span{flex:1 1 0;min-width:0;border-radius:2px 2px 0 0;background:var(--c-me);height:0}
+.rhbars span.p{background:var(--c-peer)}
+.rhaxis{display:flex;gap:2px;font-size:9px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+.rhaxis span{flex:1 1 0;text-align:center;min-width:0;overflow:hidden}
+.rhlg{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:5px;align-items:center}
+.rhlg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+/* 高频词云 */
+.wc{
+  display:flex;flex-wrap:wrap;gap:3px 11px;align-items:baseline;justify-content:center;
+  border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:13px 12px;min-height:96px;
+}
+.wc b{font-weight:700;line-height:1.3;white-space:nowrap;cursor:default}
+.wc b small{font-weight:400;font-size:9.5px;opacity:.62;margin-left:2px}
+.wcmeta{font-size:11.5px;color:var(--muted);line-height:1.65}
+
+/* ---------- 扩展功能的响应式 ---------- */
+@media (max-width:980px){
+  .fold{min-width:210px}
+  .fold[open]{flex:1 1 100%}
+}
+@media (max-width:760px){
+  .rhgrid{grid-template-columns:1fr}
+  .hminner{padding:7px 8px 5px}
+}
+@media (max-width:640px){
+  .fold{min-width:100%}
+  .fold .fbody{padding:1px 10px 10px}
+  .expgrid{grid-template-columns:1fr 1fr}
+  .mini{min-height:32px}
+  .expgrid button{min-height:38px}
+  .rhbars{height:46px}
+  .wc{padding:11px 9px;gap:3px 9px;min-height:84px}
+}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- 左侧常驻状态栏 -->
+  <aside class="sidebar">
+
+    <!-- 数据源切换：微博 / B站（同一套查看器，数据互不影响） -->
+    <div class="srcsw" id="srcSw" role="tablist" aria-label="切换备份来源">
+      <button type="button" role="tab" data-src="weibo" aria-pressed="true">微博</button>
+      <button type="button" role="tab" data-src="bili" aria-pressed="false">B站</button>
+    </div>
+
+    <div class="side-top">
+      <div class="brand"><i class="dot"></i><span id="title">微博私信备份</span></div>
+      <button class="iconbtn" id="themeBtn" title="切换深浅主题">🌗</button>
+    </div>
+
+    <div class="stats" id="stats">载入中…</div>
+
+    <div class="side-sec">
+      <label class="search">
+        <span class="ico">🔍</span>
+        <input id="q" type="search" placeholder="搜索消息或图片里的文字…（按 / 聚焦）" autocomplete="off">
+        <button class="clr" id="qclr" title="清空">✕</button>
+      </label>
+      <div class="hitrow">
+        <span class="hitnav" id="hitnav">
+          <button id="hitPrev" title="上一个匹配（Shift+Enter）">↑</button>
+          <span class="pos" id="hitPos">0 / 0</span>
+          <button id="hitNext" title="下一个匹配（Enter）">↓</button>
+        </span>
+        <span class="found" id="found"></span>
+      </div>
+      <div class="searchhint" id="ctxhint">每条命中消息下方都有「↕ 展开上下文」按钮，可看它前后的对话</div>
+    </div>
+
+    <div class="side-sec">
+      <div class="sec-t">筛选</div>
+      <div class="chips" id="chips">
+        <button class="chip" data-f="all" aria-pressed="true">全部</button>
+        <button class="chip" data-f="peer" aria-pressed="false">TA 发的</button>
+        <button class="chip" data-f="me" aria-pressed="false">我发的</button>
+        <button class="chip" data-f="img" aria-pressed="false">含图片</button>
+        <button class="chip full" id="autoChip" aria-pressed="false"
+                title="一键隐藏 / 显示对方的自动回复（按各会话的实际文案自动判定）">🚫 自动回复</button>
+        <!-- 单独隐藏的消息：只在有隐藏项时出现；连点两次才全部恢复（防误触） -->
+        <button class="chip full" id="hidChip" hidden
+                title="这些是用右键「隐藏这条消息」藏起来的。点一下会问一次，4 秒内再点一次才全部恢复">🙈 已隐藏 0 条</button>
+      </div>
+    </div>
+
+    <!-- 高级筛选：发送者 / 类型 / 日期区间 / 正则 / 索引命中，与上面的快捷筛选叠加生效 -->
+    <div class="side-sec">
+      <details class="fold" id="advFold">
+        <summary>高级筛选<span class="cnt" id="advCnt" hidden>0</span></summary>
+        <div class="fbody">
+          <div class="frow">
+            <label for="advType">类型</label>
+            <select id="advType" title="只看某一种消息类型"><option value="all">全部类型</option></select>
+          </div>
+          <div class="two">
+            <input type="date" id="advSince" title="起始日期：当天 05:00 起（含）">
+            <input type="date" id="advUntil" title="结束日期：到次日 05:00 止（不含）">
+          </div>
+          <div class="minis">
+            <button class="mini" id="advRegex" aria-pressed="false"
+                    title="把搜索词当正则表达式（不区分大小写）。例：生日.*快乐">.* 正则</button>
+            <button class="mini" id="advOcr" aria-pressed="false"
+                    title="只看「图片里识别到文字」的消息（依赖本地 OCR 索引）">图内有字</button>
+            <button class="mini" id="advVlm" aria-pressed="false"
+                    title="只看「图片有内容描述」的消息（依赖本地图片描述索引）">有图描述</button>
+          </div>
+          <div class="rexerr" id="advRexErr" hidden></div>
+          <div class="minis">
+            <button class="mini" id="advReset" title="清空全部筛选条件（含搜索词与自动回复开关）">✕ 清空全部条件</button>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="side-sec">
+      <div class="sec-t">跳到日期</div>
+      <input type="date" id="jump" title="跳到某个「逻辑日」——该日 05:00 起">
+      <!-- 换日规则就写在这里：它同时决定分隔条归属、月份归属、筛选区间和统计口径 -->
+      <div class="hintline" id="dayCutNote">日期按每天凌晨 05:00 分界：一条消息属于「它前面最近的那个 05:00」那一天，
+        所以 00:00~05:00 的消息显示在前一天下面（钟点仍是真实时间）。</div>
+    </div>
+
+    <div class="side-sec">
+      <div class="sec-t">数据</div>
+      <button class="iconbtn wide" id="statBtn"
+              title="按每天 05:00 分界（00:00~05:00 算前一天）统计「我发出」与「对方回复」的条数，并画出每日趋势">📊 互动统计</button>
+    </div>
+
+    <!-- 导出：全部在浏览器里本地生成文件，不上传任何内容 -->
+    <div class="side-sec">
+      <details class="fold" id="expFold">
+        <summary>导出<span class="cnt" id="expCnt" hidden>0</span></summary>
+        <div class="fbody">
+          <div class="frow">
+            <label for="expScope">范围</label>
+            <select id="expScope" title="导出哪一批消息">
+              <option value="list">当前筛选结果</option>
+              <option value="all">全部消息</option>
+            </select>
+          </div>
+          <div class="minis">
+            <button class="mini" id="expMask" aria-pressed="false"
+                    title="导出前把手机号 / 邮箱 / 身份证 / 银行卡 / 关键词后的账号 / 收货地址替换成占位符">🔒 敏感信息打码</button>
+          </div>
+          <div class="expgrid">
+            <button data-exp="html" title="单文件网页，图片用相对路径引用（请存到项目目录下再打开）">HTML</button>
+            <button data-exp="md" title="Markdown，适合归档或喂给大模型">Markdown</button>
+            <button data-exp="txt" title="纯文本，一行一条，最通用">纯文本</button>
+            <button data-exp="json" title="结构化 JSON 数组，保留全部字段">JSON</button>
+            <button data-exp="jsonl" title="一行一条 JSON，适合流式处理与向量化">JSONL</button>
+            <button data-exp="csv" title="表格：时间 / 谁 / 类型 / 正文（Excel 可直接打开）">CSV</button>
+          </div>
+          <div class="frow">
+            <label for="expPwd">口令</label>
+            <input type="password" id="expPwd" placeholder="留空则不加密" autocomplete="new-password">
+          </div>
+          <div class="expgrid">
+            <button class="primary" id="expEnc" title="用口令加密后导出（AES-GCM + PBKDF2），可由本页再导入解密">🔐 加密导出</button>
+            <button id="expImpBtn" title="导入并解密之前用「加密导出」生成的文件">导入解密</button>
+            <button id="expCopy" title="把当前筛选结果复制成纯文本到剪贴板">复制文本</button>
+          </div>
+          <input type="file" id="expImp" accept=".json,.enc,.enc.json,application/json" hidden>
+          <div class="expmsg" id="expMsg" hidden></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="side-foot">
+      <button class="iconbtn wide" id="toTop" title="回到最早">↑ 最早</button>
+      <button class="iconbtn wide" id="toBot" title="回到最新">↓ 最新</button>
+    </div>
+  </aside>
+
+  <main id="chat"></main>
+
+  <!-- 右侧月份时间轴（宽屏显示） -->
+  <aside class="rail" id="rail">
+    <div class="sec-t">时间轴</div>
+    <div id="months"></div>
+  </aside>
+
+</div>
+
+<div class="fab">
+  <button id="toTop2" title="回到最早">↑</button>
+  <button id="toBot2" title="回到最新">↓</button>
+</div>
+
+<div id="lb">
+  <img id="lbimg" alt="">
+  <div class="bar">
+    <button id="lbprev">← 上一张</button>
+    <span id="lbinfo"></span>
+    <button id="lbnext">下一张 →</button>
+    <a id="lbsave" download>下载</a>
+    <button id="lbclose">关闭</button>
+  </div>
+</div>
+
+<!-- 互动统计面板 -->
+<div id="stat">
+  <div class="statbox">
+    <div class="stat-h">
+      <h2>互动统计 <em id="statRange">按每天 05:00 分界 · 本机时区</em></h2>
+      <button class="iconbtn" id="statClose">关闭</button>
+    </div>
+    <div class="stat-body">
+      <div class="kpis" id="kpis"></div>
+      <div class="ctrls">
+        <span class="seg" id="rangeSeg">
+          <button data-r="30" aria-pressed="false">近 30 天</button>
+          <button data-r="90" aria-pressed="false">近 90 天</button>
+          <button data-r="365" aria-pressed="false">近 1 年</button>
+          <button data-r="0" aria-pressed="true">全部</button>
+        </span>
+        <button class="tog" id="avgTog" aria-pressed="true"
+                title="7 日移动平均：抹平单日波动，看趋势走向">〰 7 日均线</button>
+        <button class="tog" id="dualTog" aria-pressed="true"
+                title="左右各一套刻度：两条线按自身最大值铺满图高，便于看趋势形状。关掉则同轴对比真实量级">⇕ 独立量程</button>
+        <span class="legend">
+          <span><i style="background:var(--c-me)"></i>我发出</span>
+          <span><i style="background:var(--c-peer)"></i><span id="legPeer">对方回复</span></span>
+        </span>
+      </div>
+      <div class="chartwrap" id="chartwrap">
+        <svg id="chart"></svg>
+        <div id="tip"></div>
+      </div>
+      <div class="chart-hint" id="chartHint"></div>
+
+      <!-- 日历热力图：折线图看不出「疏密」，方格一眼就能看出断档 -->
+      <div class="stsec">
+        <h3>📅 日历热力图 <em>看清每一年聊得密不密 · 点格子跳到那天</em></h3>
+        <div class="ctrls">
+          <span class="seg" id="hmSeg">
+            <button data-hm="all" aria-pressed="true">合计</button>
+            <button data-hm="me" aria-pressed="false">我发出</button>
+            <button data-hm="peer" aria-pressed="false">TA 回复</button>
+          </span>
+          <span class="hmleg" id="hmLeg"></span>
+        </div>
+        <div class="hmwrap"><div class="hminner"><svg class="hmsvg" id="heat"></svg></div></div>
+      </div>
+
+      <!-- 聊天节律：谁先开口 / 回复时延 / 24 小时与星期分布 -->
+      <div class="stsec">
+        <h3>⏱ 聊天节律 <em>谁先开口 · 隔多久回 · 一天里什么时候最活跃</em></h3>
+        <div class="rhgrid" id="rhythm"></div>
+      </div>
+
+      <!-- 高频词云：中文按 2-gram / 3-gram 统计，英文数字按整词 -->
+      <div class="stsec">
+        <h3>🔤 高频词云 <em>字号 = 词频，颜色 = 谁说得更多</em></h3>
+        <div class="ctrls">
+          <button class="mini" id="wcOcr" aria-pressed="false"
+                  title="把图片里识别到的文字也计入词频（依赖本地 OCR 索引）">含图内文字</button>
+          <button class="mini" id="wcStop" aria-pressed="true"
+                  title="过滤掉「的 / 了 / 就是 / 这个」这类不承载话题的功能词">过滤虚词</button>
+          <button class="mini" id="wcMine" aria-pressed="false"
+                  title="只看我发出的消息里的高频词">只看我发的</button>
+          <button class="mini" id="wcPeer" aria-pressed="false"
+                  title="只看对方发出的消息里的高频词">只看TA发的</button>
+        </div>
+        <div class="wc" id="wc"></div>
+        <div class="wcmeta" id="wcMeta"></div>
+      </div>
+
+      <div class="caliber" id="caliber"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 会话清单（由 scripts/build_sessions.mjs 从项目根的 sessions.json 生成）。
+     缺这个文件时页面会用内置的「微博 / B站」两个来源兜底，不会打不开。 -->
+<script src="sessions.js" onerror="window.__sessionsMissing=1"></script>
+<script>
+/* 额外会话（内置的微博 / B站 已经由下面的静态标签加载好了）：
+   这里在解析期同步把这几个数据文件插进来，保证它们在主脚本之前就绪。
+   ⚠ 注释和字符串里都不能出现完整的结束标签 —— 哪怕写在注释里，
+     HTML 解析器也会当场把这个 script 块切断（本文件真踩过这个坑）。
+     所以要拼着写：'<' + '/scr' + 'ipt>'。 */
+(function(){
+  var list = window.DM_SESSIONS;
+  if(!list || !list.length) return;
+  for(var i = 0; i < list.length; i++){
+    var s = list[i];
+    if(!s || s.builtin || !s.files) continue;
+    ['messages','faces','ocr','vlm'].forEach(function(k){
+      if(s.files[k]) document.write('<scr' + 'ipt src="' + s.files[k] + '"></scr' + 'ipt>');
+    });
+  }
+})();
+</script>
+
+<script src="data/messages.js"></script>
+<script src="data/faces.js"></script>
+<script src="data/ocr.js" onerror="window.__ocrMissing=1"></script>
+<script src="data/vlm.js" onerror="window.__vlmMissing=1"></script>
+<!-- B站数据集（目录与全局名都与微博独立，缺失时不影响微博视图） -->
+<script src="bili/messages.js" onerror="window.__biliMissing=1"></script>
+<script src="bili/faces.js" onerror="window.__biliFacesMissing=1"></script>
+<script src="bili/ocr.js" onerror="window.__biliOcrMissing=1"></script>
+<script src="bili/vlm.js" onerror="window.__biliVlmMissing=1"></script>
+<script>
+/* ==========================================================
+   数据源注册表：微博 / B站 共用同一个查看器，顶部按钮切换
+   ----------------------------------------------------------
+   两套数据完全独立，各自有自己的目录与导出的全局名：
+     微博  data/messages.js → window.DM_DATA     （+ DM_FACES / DM_OCR / DM_VLM）
+     B站   bili/messages.js → window.DM_DATA_B   （+ DM_FACES_B / DM_OCR_B / DM_VLM_B）
+   ========================================================== */
+/* 数据源注册表由「会话清单」驱动（多会话支持）
+   ----------------------------------------------------------
+   清单来源优先级：
+     1) <script src="sessions.js"> 里的 window.DM_SESSIONS
+        —— 由 scripts/build_sessions.mjs 从项目根的 sessions.json 生成
+     2) 清单缺失时用下面的内置兜底（微博 / B站），保证页面不会打不开
+
+   每个会话声明它自己的：
+     · dir      数据目录（data / bili / 其它）
+     · globals  承载数据的全局变量名（DM_DATA / DM_DATA_B / ...）
+     · builtin  true = 这个数据文件在 HTML 里已有静态 <script> 标签
+                false = 由页头那段注入脚本在解析期动态插入
+   ========================================================== */
+var BUILTIN_SESSIONS = [
+  {
+    key:'weibo', label:'微博', title:'微博私信备份', dir:'data', builtin:true,
+    globals:{ data:'DM_DATA', faces:'DM_FACES', ocr:'DM_OCR', vlm:'DM_VLM' },
+    autoReply:'',
+    empty:'未找到数据文件 <code>data/messages.js</code><br>请先运行一次「更新备份.cmd」',
+  },
+  {
+    key:'bili', label:'B站', title:'B站私信备份', dir:'bili', builtin:true,
+    globals:{ data:'DM_DATA_B', faces:'DM_FACES_B', ocr:'DM_OCR_B', vlm:'DM_VLM_B' },
+    autoReply:'',
+    empty:'未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「更新B站备份.cmd」' +
+          '（首次需要在弹出的浏览器窗口里扫码登录 B站）',
+  },
+];
+
+var SESSION_LIST = (window.DM_SESSIONS && window.DM_SESSIONS.length)
+  ? window.DM_SESSIONS : BUILTIN_SESSIONS;
+
+var SOURCES = {};
+SESSION_LIST.forEach(function(s){
+  if(!s || !s.key) return;
+  var g = s.globals || {};
+  SOURCES[s.key] = {
+    key: s.key,
+    label: s.label || s.key,
+    title: s.title || ((s.label || s.key) + '私信备份'),
+    dir: s.dir || '',
+    builtin: !!s.builtin,
+    data: g.data ? window[g.data] : undefined,
+    faces: g.faces ? window[g.faces] : undefined,
+    ocr: g.ocr ? window[g.ocr] : undefined,
+    vlm: g.vlm ? window[g.vlm] : undefined,
+    autoReply: s.autoReply || '',
+    empty: s.empty || ('未找到数据文件 <code>' + (s.dir || '') +
+                       '/messages.js</code><br>请先运行一次对应的更新脚本'),
+  };
+});
+
+/* 顶部切换条的渲染顺序 */
+var SESSION_ORDER = Object.keys(SOURCES);
+
+/* 切换数据源时，把整棵 DOM 恢复成「初始快照」——
+   这样所有节点都是全新的，监听器不会因为反复 boot 而重复叠加。 */
+var SNAP = null;
+function snapDom(){
+  if(!SNAP) SNAP = {
+    layout: document.querySelector('.layout').cloneNode(true),
+    fab:    document.querySelector('.fab').cloneNode(true),
+    lb:     document.getElementById('lb').cloneNode(true),
+    stat:   document.getElementById('stat').cloneNode(true),
+  };
+  return SNAP;
+}
+function resetDom(){
+  var S = snapDom();
+  [[ '.layout', S.layout ], [ '.fab', S.fab ], [ '#lb', S.lb ], [ '#stat', S.stat ]]
+    .forEach(function(p){
+      var cur = document.querySelector(p[0]);
+      if(cur && cur.parentNode) cur.parentNode.replaceChild(p[1].cloneNode(true), cur);
+    });
+}
+
+var CUR_SRC = null;
+
+function boot(srcKey){
+  var SRC = SOURCES[srcKey] || SOURCES.weibo;
+  CUR_SRC = SRC.key;
+
+  // 摘掉上一轮的全局监听，再重建 DOM（节点级监听器随旧节点一起扔掉）
+  if(boot._bound){
+    boot._bound.forEach(function(b){
+      (b[2] ? window : document).removeEventListener(b[0], b[1], b[3]);
+    });
+  }
+  var BOUND = boot._bound = [];
+  /* opt 会一起记下来：带 {passive:true} 注册的监听器要用同样的参数摘，
+     否则将来某天改成 capture:true 就会摘不干净（触屏长按就是这么注册的）。 */
+  function onDoc(ev, fn, opt){ document.addEventListener(ev, fn, opt); BOUND.push([ev, fn, 0, opt]); }
+  function onWin(ev, fn, opt){ window.addEventListener(ev, fn, opt); BOUND.push([ev, fn, 1, opt]); }
+
+  resetDom();
+  bindSrcSwitch();
+
+  var D = SRC.data;
+  if(!D){
+    document.getElementById('title').textContent = SRC.title;
+    document.title = SRC.title;
+    document.getElementById('stats').innerHTML = '<span class="s1">尚无数据</span>';
+    document.getElementById('chat').innerHTML = '<div class="empty">' + SRC.empty + '</div>';
+    return;
+  }
+
+  var META = D.meta || {}, ALL = D.messages || [];
+  /* 双方显示名一律从数据里取 —— 页面里不写死任何昵称。
+     换人 / 换账号只需改 sessions.json 后重抓，查看页不用动。 */
+  var PEER_LABEL = META.peer_name || '对方';
+  var SELF_LABEL = META.self_name || '我';
+  var CHUNK = 150;
+  var AUTO_REPLY = SRC.autoReply || '';   // B站没有固定文案，靠 msg_source 结构化判定
+
+  // 索引：图片总数 + 每条消息在【完整会话】里的下标（展开上下文要用）
+  var allImages = [];
+  ALL.forEach(function(m, i){
+    m._ai = i;
+    (m.images||[]).forEach(function(im, j){ if(im.local){ im._mi = i; im._ij = j; allImages.push(im); } });
+  });
+
+  /* ---------- 图片文字索引（OCR）----------
+     数据来自 data/ocr.js；这个文件是可选的，
+     卸掉 OCR 环境后其它功能不受任何影响。 */
+  var OCR = (SRC.ocr || {});
+  var OCR_KEYS = Object.keys(OCR).filter(function(k){ return k !== '_meta'; });
+  var ocrWithText = OCR_KEYS.filter(function(k){ return (OCR[k]||{}).t; }).length;
+  ALL.forEach(function(m){
+    var parts = [];
+    (m.images||[]).forEach(function(im){
+      if(!im.local) return;
+      var o = OCR[im.local.split('/').pop()];
+      if(o && o.t){
+        var s = String(o.t).replace(/\s+/g, ' ').trim();
+        if(s){ im._ocrt = s; parts.push(s); }
+      }
+    });
+    if(parts.length) m._ocr = parts.join(' ');
+  });
+
+  /* ---------- 图片内容描述索引（VLM）----------
+     数据来自 data/vlm.js；只对「OCR 没识别到文字的图片」生成（截图不上云），
+     同样可选：文件缺失时其它功能一切照常。 */
+  var VLM = (SRC.vlm || {});
+  var VLM_KEYS = Object.keys(VLM).filter(function(k){ return k !== '_meta'; });
+  var vlmWithDesc = VLM_KEYS.filter(function(k){ return (VLM[k]||{}).d; }).length;
+  ALL.forEach(function(m){
+    var vs = [];
+    (m.images||[]).forEach(function(im){
+      if(!im.local) return;
+      var v = VLM[im.local.split('/').pop()];
+      if(v && v.d){
+        var s = String(v.d).replace(/\s+/g, ' ').trim();
+        if(s){ im._vlmt = s; vs.push(s); }
+      }
+    });
+    if(vs.length) m._vlm = vs.join(' ');
+  });
+
+  document.getElementById('title').textContent = SRC.title + ' · ' + (META.peer_name || '');
+  document.title = SRC.title + ' · ' + (META.peer_name || '');
+  var legPeer = document.getElementById('legPeer');
+  if(legPeer) legPeer.textContent = PEER_LABEL + '回复';
+  var fmt = function(t){ return t ? new Date(t).toLocaleString('zh-CN',{hour12:false}) : '?'; };
+  var fmtD = function(t){ return t ? new Date(t).toLocaleDateString('zh-CN') : '?'; };
+  document.getElementById('stats').innerHTML =
+    '<span class="s1"><b>' + (META.total||0).toLocaleString() + '</b> 条消息 · <b>' +
+      (META.images||0).toLocaleString() + '</b> 张图片</span>' +
+    '<span class="s2">' + fmtD(META.first_time) + ' ~ ' + fmtD(META.last_time) + '</span>' +
+    '<span class="s3">更新于 ' + fmt(META.updated_at) + '</span>' +
+    ((ocrWithText || vlmWithDesc)
+       ? '<span class="s4">图片可搜索 <b>' + (ocrWithText + vlmWithDesc).toLocaleString() +
+         '</b> 张（文字 ' + ocrWithText.toLocaleString() + ' · 描述 ' +
+         vlmWithDesc.toLocaleString() + '）</span>' : '');
+
+  /* ---------- 状态 ---------- */
+  var st = {
+    q:'', filter:'all', list:ALL.slice(), win:0, hideAuto:false, hitIdx:-1, autoHidden:0, ctx:{},
+    hid:{},                   // 单独隐藏的消息 id（右键菜单「隐藏这条消息」）
+    /* 高级筛选（P1-5）：与上面的快捷筛选、搜索词**叠加**生效 */
+    type:'all', since:'', until:'', regex:false, onlyOcr:false, onlyVlm:false
+  };
+  try{ st.hideAuto = localStorage.getItem('dm-hide-auto-' + SRC.key) === '1'; }catch(e){}
+
+  /* ==========================================================
+     「单独隐藏某条消息」（右键菜单）
+     ----------------------------------------------------------
+     与上面的「一键隐藏自动回复」是**两套互相独立**的开关：
+       · hideAuto —— 全局开关，按类型自动判定，随时可整体关掉
+       · st.hid   —— 手工挑出来的具体消息，逐条记录
+
+     存的是消息 id，不是数组下标：数据只会往后追加，id 唯一且稳定，
+     所以下次「更新备份 / 重建备份」之后隐藏记录依然对得上。
+     按数据源分开存（dm-hidden-weibo / dm-hidden-bili），互不串。
+
+     隐藏后的行为（三处一致）：
+       ① 浏览列表里不出现
+       ② 搜索结果里不出现（搜到它也不会冒出来）
+       ③ 只有「展开上下文」时留一条虚线占位条，正文/图片一律不渲染
+     恢复方式：
+       · 点上下文里的占位条（或它的「恢复」按钮）
+       · 右键占位条 →「恢复这条消息」
+       · 侧栏「🙈 已隐藏 N 条」连点两次 → 全部恢复
+     ========================================================== */
+  var HID_KEY = 'dm-hidden-' + SRC.key;
+  function mId(m){ return (m && m.id != null) ? String(m.id) : ''; }
+  function isHid(m){ var k = mId(m); return !!(k && st.hid[k]); }
+  function hidCount(){ return Object.keys(st.hid).length; }
+  try{
+    var _hidRaw = localStorage.getItem(HID_KEY);
+    if(_hidRaw) JSON.parse(_hidRaw).forEach(function(k){ st.hid[String(k)] = 1; });
+  }catch(e){}
+  function saveHidden(){
+    try{ localStorage.setItem(HID_KEY, JSON.stringify(Object.keys(st.hid))); }catch(e){}
+  }
+
+  /* 轻提示：单例挂在 body 上（不放进 .layout，免得每次切数据源重复创建） */
+  function toast(msg){
+    var el = document.getElementById('toastEl');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'toastEl'; el.className = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ el.classList.remove('on'); }, 2000);
+  }
+
+  var hidArmed = 0, hidTimer = null;
+  function refreshHidden(){
+    var n = hidCount(), c = document.getElementById('hidChip');
+    if(hidArmed && !n) hidArmed = 0;
+    if(c){
+      c.hidden = (n === 0);
+      c.setAttribute('aria-pressed', hidArmed ? 'true' : 'false');
+      c.textContent = hidArmed
+        ? '⚠ 再点一次：全部恢复'
+        : ('🙈 已隐藏 ' + n.toLocaleString() + ' 条');
+    }
+    updateCtxHint();
+  }
+  /* 搜索提示行：把「上下文里为什么少了自动回复 / 为什么有占位条」说清楚，
+     免得看起来像是漏消息。 */
+  function updateCtxHint(){
+    var h = document.getElementById('ctxhint');
+    if(!h) return;
+    h.innerHTML = '每条命中消息下方都有「↕ 展开上下文」按钮，可看它前后的对话' +
+      (st.hideAuto ? '<br>（自动回复已按当前设置跳过，不会出现在上下文里）' : '') +
+      (hidCount() ? '<br>（已隐藏的消息在上下文里只显示占位条，点一下就能恢复）' : '');
+  }
+
+  function setHidden(m, on){
+    var k = mId(m);
+    if(!k) return false;
+    if(on) st.hid[k] = 1; else delete st.hid[k];
+    saveHidden();
+    return true;
+  }
+  function restoreOne(id){
+    if(!st.hid[id]) return;
+    delete st.hid[id];
+    saveHidden();
+    applyFilter(); render();
+    toast('已恢复这条消息');
+  }
+  /* 全部恢复要连点两次：第一次只是「上膛」，4 秒内不点第二次就自动解除 */
+  function armRestoreAll(){
+    if(hidArmed){ restoreAllHidden(); return; }
+    if(!hidCount()) return;
+    hidArmed = 1;
+    refreshHidden();
+    clearTimeout(hidTimer);
+    hidTimer = setTimeout(function(){ hidArmed = 0; refreshHidden(); }, 4000);
+  }
+  function restoreAllHidden(){
+    var n = hidCount();
+    if(!n) return;
+    st.hid = {}; saveHidden();
+    hidArmed = 0; clearTimeout(hidTimer);
+    applyFilter(); render();
+    toast('已恢复全部 ' + n.toLocaleString() + ' 条隐藏消息');
+  }
+
+  function around(s, p, qlen){
+    var a = Math.max(0, p - 14), b = Math.min(s.length, p + qlen + 14);
+    return (a > 0 ? '…' : '') + s.slice(a, b) + (b < s.length ? '…' : '');
+  }
+
+  function haystack(m){
+    var s = (m.text||'') + ' ' + (m.sender||'') + ' ' + (m.type||'') + ' ' +
+            (m._ocr||'') + ' ' + (m._vlm||'');
+    // 卡片要把标题/子类型/BV号一起纳入搜索：B站分享的视频、专栏正文为空，
+    // 标题只存在 card.title 里，漏掉就等于这些内容完全搜不到。
+    if(m.card) s += ' ' + (m.card.author||'') + ' ' + (m.card.kind||'') + ' ' +
+                    (m.card.title||'') + ' ' + (m.card.sub||'') + ' ' +
+                    (m.card.text||'') + ' ' + (m.card.url||'') + ' ' +
+                    (m.card.bvid||'') + ' ' + (m.card.extra||'');
+    (m.links||[]).forEach(function(l){ s += ' ' + (l.short||'') + ' ' + (l.long||'') + ' ' + (l.title||''); });
+    return s.toLowerCase();
+  }
+
+  /* ---------- 高级筛选的生效条件（供计数徽标与提示用） ---------- */
+  function advActiveCount(){
+    var n = 0;
+    if(st.type !== 'all') n++;
+    if(st.since) n++;
+    if(st.until) n++;
+    if(st.regex) n++;
+    if(st.onlyOcr) n++;
+    if(st.onlyVlm) n++;
+    return n;
+  }
+  function updateAdvCnt(){
+    var el = document.getElementById('advCnt');
+    if(!el) return;
+    var n = advActiveCount();
+    if(n){ el.hidden = false; el.textContent = n; } else { el.hidden = true; }
+  }
+
+  function applyFilter(){
+    var q = st.q.trim(), rx = null;
+
+    /* 正则模式：写错了不能让页面炸掉 —— 退回普通「包含」匹配并明确提示 */
+    if(q && st.regex){
+      try{ rx = new RegExp(q, 'i'); }catch(e){ rx = null; }
+    }
+    var rexEl = document.getElementById('advRexErr');
+    if(rexEl){
+      if(q && st.regex && !rx){
+        rexEl.hidden = false;
+        rexEl.textContent = '⚠ 正则表达式写错了，本次已退回「普通包含」匹配';
+      } else {
+        rexEl.hidden = true;
+      }
+    }
+
+    /* 日期区间：与「日」的归属**共用同一套边界** —— 起点 = 当天 05:00，
+       上界 = 次日 05:00（不含）。两者若不同源，「筛 9/15」就会混进 9/16 凌晨的消息。 */
+    var sinceTs = st.since ? dayStartTs(st.since) : 0;
+    var untilTs = st.until ? dayEndTs(st.until) : 0;
+
+    var autoHidden = 0;
+    st.ctx = {};              // 换了搜索词/筛选条件，之前展开的上下文作废
+    st.list = ALL.filter(function(m){
+      /* 单独隐藏的消息是**硬性排除**：不管搜什么、筛什么都不出现。
+         它只可能在「展开上下文」里以占位条的形式露个面（见 buildItems）。 */
+      if(isHid(m)) return false;
+      if(st.filter==='peer' && m.from!=='peer') return false;
+      if(st.filter==='me' && m.from!=='me') return false;
+      if(st.filter==='img' && !(m.images||[]).some(function(i){return i.local||i.url;})) return false;
+      if(st.type !== 'all' && (m.type || 'other') !== st.type) return false;
+      if(sinceTs && !(m.ts >= sinceTs)) return false;
+      if(untilTs && !(m.ts < untilTs)) return false;
+      if(st.onlyOcr && !m._ocr) return false;       // 只看「图片里有字」的
+      if(st.onlyVlm && !m._vlm) return false;       // 只看「图片有内容描述」的
+      if(rx){
+        if(!rx.test(haystack(m))) return false;
+      } else if(q && haystack(m).indexOf(q.toLowerCase()) < 0) return false;
+      if(st.hideAuto && msgKind(m) === 'auto'){ autoHidden++; return false; }
+      return true;
+    });
+    st.autoHidden = autoHidden;
+    var parts = [];
+    var advN = advActiveCount();
+    if(st.q) parts.push((rx ? '正则命中 ' : '命中 ') + st.list.length.toLocaleString() + ' 条');
+    else if(st.filter !== 'all' || advN) parts.push('筛出 ' + st.list.length.toLocaleString() + ' 条');
+    if(st.hideAuto) parts.push('已隐藏自动回复 ' + autoHidden.toLocaleString() + ' 条');
+    document.getElementById('found').textContent = parts.join('　·　');
+    var hint = document.getElementById('ctxhint');
+    if(hint) hint.style.display = (st.q && st.list.length) ? 'block' : 'none';
+    updateAdvCnt();
+    updateHitNav();
+    refreshHidden();
+    buildRail();
+    return st.list;
+  }
+
+  function updateHitNav(){
+    var nav = document.getElementById('hitnav');
+    if(!st.q || !st.list.length){ nav.classList.remove('on'); return; }
+    nav.classList.add('on');
+    document.getElementById('hitPos').textContent =
+      (st.hitIdx >= 0 ? (st.hitIdx + 1).toLocaleString() : '–') + ' / ' + st.list.length.toLocaleString();
+    document.getElementById('hitPrev').disabled = st.hitIdx <= 0;
+    document.getElementById('hitNext').disabled = st.hitIdx < 0 || st.hitIdx >= st.list.length - 1;
+  }
+
+  function updateAutoChip(){
+    var c = document.getElementById('autoChip');
+    if(!c) return;
+    c.setAttribute('aria-pressed', st.hideAuto ? 'true' : 'false');
+    c.textContent = st.hideAuto ? '🙈 自动回复已隐藏' : '🚫 自动回复';
+    c.title = (SRC.key === 'bili')
+      ? '一键隐藏 / 显示 B站的自动回复：接口 msg_source 为 8~11、17，以及关注后的自动推送（msg_type 16）'
+      : '一键隐藏 / 显示' + esc(PEER_LABEL) + '的自动回复「' + AUTO_REPLY + '」';
+  }
+
+  function esc(s){
+    return String(s==null?'':s).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+  function hl(s){
+    var q = st.q.trim();
+    if(!q) return esc(s);
+    var out = '', low = s.toLowerCase(), ql = q.toLowerCase(), i = 0, k;
+    while((k = low.indexOf(ql, i)) >= 0){
+      out += esc(s.slice(i,k)) + '<mark>' + esc(s.slice(k,k+q.length)) + '</mark>';
+      i = k + q.length;
+    }
+    return out + esc(s.slice(i));
+  }
+
+  /* ---------- 官方表情图（把 [委屈] / [/ee808d.png] 还原成图片）---------- */
+  var FACES = (SRC.faces || { phrase:{}, ee:{} });
+  var RE_EE_TOKEN = /^\/?(ee[0-9a-f]{4,6})\.(?:png|gif)$/i;
+  var RE_FACE = /\[([^\[\]\s]{1,20})\]|\/?(ee[0-9a-f]{4,6})\.(?:png|gif)/gi;
+
+  function faceImg(token){
+    if(!token) return null;
+    var m = RE_EE_TOKEN.exec(token), rel = null;
+    if(m) rel = FACES.ee && FACES.ee[m[1].toLowerCase()];
+    // 两套数据的 phrase 键格式不同：微博是 "[微笑]"，B站是 "tv_doge"（无括号）。
+    // richText 传进来的是去掉括号的 token，所以两种都试一次。
+    else if(FACES.phrase) rel = FACES.phrase[token] || FACES.phrase['[' + token + ']'];
+    if(!rel) return null;
+    return '<img class="face" src="' + esc(rel) + '" alt="' +
+           esc(token.replace(/[\[\]]/g,'')) + '" title="' + esc(token.replace(/[\[\]]/g,'')) + '">';
+  }
+
+  // 把已转义文本里的网址变成可点击链接（正文内链接，不重复占位）
+  function linkify(h){
+    return h.replace(/(https?:\/\/[^\s<，。！？、“”‘’）)】]+)/g, function(u){
+      return '<a class="txtlink" href="' + u + '" target="_blank" rel="noreferrer">' + u + '</a>';
+    });
+  }
+
+  // 正文渲染：表情还原成官方图 + 关键词高亮 + 网址可点
+  function richText(s){
+    if(s == null || s === '') return '';
+    var out = '', i = 0, m;
+    RE_FACE.lastIndex = 0;
+    while((m = RE_FACE.exec(s))){
+      out += linkify(hl(s.slice(i, m.index)));
+      var img = faceImg(m[2] ? m[2] : m[1]);
+      out += img || linkify(hl(m[0]));
+      i = RE_FACE.lastIndex;
+    }
+    return out + linkify(hl(s.slice(i)));
+  }
+
+  /* ---------- 微博链接归一化：mid 与短链指向同一条时只保留一个 ---------- */
+  var B62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  function mid2b62(mid){
+    var out = '';
+    for(var i = mid.length - 7; i > -7; i -= 7){
+      var seg = mid.substring(Math.max(i, 0), i + 7);
+      var num = parseInt(seg, 10), s = '';
+      for(var k = 0; k < 4; k++){ s = B62.charAt(num % 62) + s; num = Math.floor(num / 62); }
+      out = s + out;
+    }
+    return out.replace(/^0+/, '') || '0';
+  }
+  function weiboKey(url){
+    if(!url) return '';
+    var m = /(?:weibo\.com|weibo\.cn)\/(?:u\/)?(\d+)\/([0-9A-Za-z]+)/.exec(String(url));
+    if(!m) return '';
+    return m[1] + ':' + (/^\d+$/.test(m[2]) ? mid2b62(m[2]) : m[2]);
+  }
+  // B站链接归一化：同一支视频 / 专栏 / 动态的 BV 号、av 号、短链只保留一条
+  function biliKey(url){
+    if(!url) return '';
+    var s = String(url), m;
+    if((m = /(BV[0-9A-Za-z]{10})/.exec(s))) return 'bv:' + m[1];
+    if((m = /read\/cv(\d+)/i.exec(s))) return 'cv:' + m[1];
+    if((m = /t\.bilibili\.com\/(\d+)/.exec(s))) return 'dyn:' + m[1];
+    if((m = /\/(?:video\/)?av(\d+)/i.exec(s))) return 'av:' + m[1];
+    if((m = /bangumi\/play\/(?:ss|ep)(\d+)/i.exec(s))) return 'pgc:' + m[1];
+    return '';
+  }
+  // 按当前数据源选归一化规则（微博那套逻辑保持原样，不受影响）
+  function linkKey(u){
+    if(SRC.key === 'bili') return biliKey(u) || String(u || '');
+    return weiboKey(u) || String(u || '');
+  }
+  function fmtShort(created){
+    if(!created) return '';
+    var d = new Date(created);
+    if(isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  /* ================= 一天的边界：不是 00:00，是每天凌晨 05:00 =================
+     「某天」= 当天 05:00 → 次日 05:00。所以 00:00~05:00 的消息算作**前一天**。
+     为什么非改不可：实测本站数据里 33.75%（微博 2,675/7,925）、
+     51.68%（B站 1,505/2,912）的消息落在 00:00~05:00 —— 按自然日切会把一场
+     深夜聊天从中间劈成两天，「有来有回」「日均」这些按天统计跟着失真。
+
+     实现只有一条铁律：**先把时间戳减 5 小时，再取年月日**。
+     本文件其余地方一律走这里的函数，别再自己 new Date(ts).getDate()。 */
+  var DAY_CUT = 5 * 60 * 60 * 1000;      // 换日时刻：凌晨 5 点
+  var DAY_CUT_H = 5;                     // 换日时刻（小时），给 setHours 用
+  var DAY_CUT_S = '05:00';               // 同一时刻的**展示写法**：文案一律用它。
+                                         // 别写 DAY_CUT_H + ':00' —— 会渲染成「5:00」，
+                                         // 和别处的「05:00」对不上（被 verify_daycut 抓到过）。
+  function dayDate(t){ return new Date((t instanceof Date ? t.getTime() : t) - DAY_CUT); }
+  function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function ym(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  // 逻辑日 / 逻辑月：同一个偏移出来的，避免「日归属 A、月归属 B」这种自相矛盾
+  function dayKey(t){ return ymd(dayDate(t)); }
+  function monthKey(t){ return ym(dayDate(t)); }
+  // 逻辑日 key → 该日正午：取星期、加天数都最稳（绕开夏令时在午夜附近的偏移）
+  // 非法 key 返回 null，让上层退化成「不加这个条件」，而不是把 NaN 混进比较里
+  function dayNoon(k){
+    var p = String(k == null ? '' : k).split('-');
+    if(p.length !== 3 || !/^\d{4}$/.test(p[0])) return null;
+    var d = new Date(+p[0], +p[1]-1, +p[2], 12, 0, 0, 0);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // 逻辑日 key → 该日真正的起点（当天 05:00）与上界（次日 05:00，不含）
+  function dayStartTs(k){ var d = dayNoon(k); if(!d) return 0; d.setHours(DAY_CUT_H, 0, 0, 0); return d.getTime(); }
+  function dayEndTs(k){ var d = dayNoon(k); if(!d) return 0; d.setDate(d.getDate()+1); d.setHours(DAY_CUT_H, 0, 0, 0); return d.getTime(); }
+  function dayLabel(t){
+    var d = dayDate(t), w = ['日','一','二','三','四','五','六'][d.getDay()];
+    return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 星期'+w;
+  }
+  /* 分隔条 tooltip：把「这天到底指哪 24 小时」写明白，
+     否则看到 03:00 的消息挂在昨天下面会以为是 bug */
+  function dayTip(k){
+    var f = function(ms){ var d = new Date(ms);
+      return String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+    return '按每天 ' + DAY_CUT_S + ' 分界：' + f(dayStartTs(k)) + ' ' + DAY_CUT_S + ' → ' +
+           f(dayEndTs(k)) + ' ' + DAY_CUT_S + '（00:00~' + DAY_CUT_S + ' 算前一天）';
+  }
+  /* 这条提示同时出现在侧栏、分隔条 tooltip 和统计口径里，措辞保持一致 */
+  var DAY_CUT_NOTE = '日期按每天凌晨 ' + DAY_CUT_S + ' 分界（00:00~' + DAY_CUT_S + ' 的消息算前一天）';
+  function hhmm(t){
+    var d = new Date(t);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  function avatar(m){
+    var src = m.from === 'me' ? META.self_avatar_local : META.peer_avatar_local;
+    if(!src) src = m.from === 'me' ? META.self_avatar : META.peer_avatar;
+    var name = m.from === 'me' ? (META.self_name||'我') : (META.peer_name||'TA');
+    if(src) return '<img class="av" src="'+esc(src)+'" data-fb="'+esc(name.slice(0,1))+'" alt="">';
+    return '<div class="av-fb">'+esc(name.slice(0,1))+'</div>';
+  }
+  function fixAvatars(){
+    Array.prototype.forEach.call(chat.querySelectorAll('img.av'), function(el){
+      el.onerror = function(){
+        var d = document.createElement('div');
+        d.className = 'av-fb';
+        d.textContent = el.dataset.fb || '?';
+        if(el.parentNode) el.parentNode.replaceChild(d, el);
+      };
+    });
+  }
+  /* 图片没能落到本地（下载时接口就已 404，例如 B站相簿封面被删）
+     → 退回远端地址后仍加载失败时，不要留一个破图，换成一行提示。 */
+  function fixImgs(){
+    Array.prototype.forEach.call(chat.querySelectorAll('.imgs img'), function(el){
+      el.onerror = function(){
+        var s = document.createElement('span');
+        s.className = 'imgdead';
+        s.textContent = '原图已失效';
+        s.title = '这张图在备份时就没能下载下来（远端地址已失效）';
+        if(el.parentNode) el.parentNode.replaceChild(s, el);
+      };
+    });
+  }
+
+  var TYPE_LABEL = {text:'文字', image:'图片', emoji:'表情', video:'视频', voice:'语音', link:'链接', card:'卡片', other:'消息', recalled:'已撤回', recall:'撤回提示', notice:'系统提示', ai:'AI 消息'};
+
+  function renderBubble(m, idx, opt){
+    opt = opt || {};
+    var isMe = m.from === 'me';
+    // 搜索结果里：st.ctx[m._ai] 存在 = 这条正在展开上下文 → 强高亮
+    //                opt.inctx   = 这条落在别人的上下文区域里 → 细描边
+    var isHitMode = !!(st.q && st.list.length);
+    var isExpand  = !!(isHitMode && st.ctx[m._ai] !== undefined);
+    var isCtxHit  = !!(isHitMode && !isExpand && opt.hit && opt.inctx);
+    var inner = '';
+    var txt = m.text || '';
+    /* 两个概念在这里汇合：
+       · isHidMsg  —— 被「单独隐藏」→ 整条只渲染成占位条（点一下恢复）
+       · autoMuted —— 被「隐藏自动回复」挡掉 → 正文不渲染
+       autoMuted 只会出现在展开的上下文里：列表/搜索里它们已经被 applyFilter 排除了。 */
+    var isHidMsg = isHid(m);
+    var autoMuted = (msgKind(m) === 'auto') && st.hideAuto;
+    var card = m.card || null;
+    var isWeiboCard = !!(card && card.kind === 'weibo');   // 分享的微博
+    var isBiliCard  = !!(card && card.kind === 'bili');    // B站分享 / 推送 / 通知卡片
+    var isWboxCard  = !!(card && card.kind === 'wbox');    // 「查看动图」→ 图片已单独展示
+    var imgs = (m.images||[]);
+    // 动图表情消息：正文是个没意义的 t.cn 短链，不要为它生成链接区
+    var hasEmoji = (m.media_type === 9 || m.media_type === 15) && imgs.length > 0;
+
+    if(m.recalled) inner += '<div class="recalled">[消息已撤回]（原内容仍保留在下方）</div>';
+
+    // 图片（含视频封面：kind==='cover'，下面会额外标注）
+    if(imgs.length){
+      var g = '<div class="imgs">';
+      imgs.forEach(function(im){
+        var src = im.local || im.url || '';
+        if(!src) return;
+        var idx = allImages.indexOf(im);
+        var cls = im.kind === 'emoji' ? 'emoji' : '';
+        // 命中「图内文字」或「图片内容描述」时：给图片描边，并把命中片段显示出来
+        var tip = '', tipLabel = '';
+        var q = st.q.trim();
+        if(q){
+          var lq = q.toLowerCase();
+          var po = im._ocrt ? im._ocrt.toLowerCase().indexOf(lq) : -1;
+          if(po >= 0){
+            cls += ' ocrhit'; tipLabel = '图内文字';
+            tip = around(im._ocrt, po, q.length);
+          }else{
+            var pv = im._vlmt ? im._vlmt.toLowerCase().indexOf(lq) : -1;
+            if(pv >= 0){
+              cls += ' vlmhit'; tipLabel = '图片内容';
+              tip = around(im._vlmt, pv, q.length);
+            }
+          }
+        }
+        var tag = '<img loading="lazy" class="'+cls+'" src="'+esc(src)+'" data-ii="'+idx+'" alt=""' +
+             (im.kind === 'cover' ? ' title="视频/语音封面"' : '') + '>';
+        g += tip
+          ? '<span class="imgwrap">' + tag + '<span class="ocrtip">' + tipLabel + '：' + hl(tip) + '</span></span>'
+          : tag;
+      });
+      g += '</div>';
+      inner += g;
+    }
+
+    /* ---- 链接汇总：同一条微博的 mid / 短链 / 正文 URL 只保留一条 ---- */
+    var seen = {}, uniq = [];
+    function addLink(u){
+      if(!u) return;
+      var k = linkKey(u);
+      if(seen[k]) return;
+      seen[k] = 1; uniq.push(u);
+    }
+    var tt0 = txt.trim();
+    var onlyUrl = /^https?:\/\/\S+$/.test(tt0);
+    var txtUrls = txt.match(/https?:\/\/[^\s，。！？、“”‘’）)】]+/g) || [];
+    // 正文里已经原样显示的网址 → 从链接区剔掉，避免同一个链接出现两次
+    var inText = {};
+    if(!onlyUrl) txtUrls.forEach(function(u){ inText[linkKey(u)] = 1; });
+
+    if(card && card.url && !isWboxCard) addLink(card.url);
+    (m.links || []).forEach(function(l){
+      var k1 = l.long ? linkKey(l.long) : '';
+      var k2 = l.short ? linkKey(l.short) : '';
+      if((k1 && inText[k1]) || (k2 && inText[k2])) return;   // 正文里已有，不再列
+      addLink(l.long || l.short);
+    });
+    if(m.gif_video) addLink(m.gif_video);
+    if(onlyUrl) txtUrls.forEach(addLink);
+
+    if(isWeiboCard){
+      /* ---- 分享的微博：默认折叠成「作者 + 两行摘要 + 小图」，点展开看全部 ---- */
+      var needBtn = (card.text || '').length > 46 || imgs.length > 0;
+      inner += '<div class="wcard">' +
+        '<div class="wcard-h">📄 ' + hl(card.author || '微博') +
+          (card.created ? ' <span class="wt">' + esc(fmtShort(card.created)) + '</span>' : '') +
+        '</div>' +
+        (card.text ? '<div class="wcard-t">' + richText(card.text) + '</div>' : '') +
+        (uniq.length ? '<a class="wcard-link" href="' + esc(uniq[0]) + '" target="_blank" rel="noreferrer">🔗 打开原微博</a>' : '') +
+        (needBtn ? '<button class="wcard-btn" type="button">展开详情</button>' : '') +
+        '</div>';
+      // 正文与 links 已并入卡片，不再重复渲染（需求4）
+    } else if(isBiliCard){
+      /* ---- B站卡片：分享视频/专栏/动态/直播、视频推送、UP主赠言、官方通知 ---- */
+      var needBtnB = ((card.title || '').length + (card.text || '').length) > 46 || imgs.length > 0;
+      // 分享视频这类卡片的 title 与 text 是同一串文字（实测 130 条里 90 条完全相同），
+      // 直接渲染会上下重复显示两遍；只有确实不同时才额外渲染正文。
+      var cardText = (card.text && card.text.trim() !== (card.title || '').trim()) ? card.text : '';
+      inner += '<div class="wcard bc">' +
+        '<div class="wcard-h">📺 ' + hl(card.sub || 'B站') +
+          (card.author ? ' <span class="wa">· ' + hl(card.author) + '</span>' : '') +
+          (card.created ? ' <span class="wt">' + esc(fmtShort(card.created)) + '</span>' : '') +
+          (card.extra ? ' <span class="wt">· ' + esc(card.extra) + '</span>' : '') +
+        '</div>' +
+        (card.title ? '<div class="wcard-t wtitle">' + richText(card.title) + '</div>' : '') +
+        (cardText ? '<div class="wcard-t">' + richText(cardText) + '</div>' : '') +
+        (uniq.length ? '<a class="wcard-link" href="' + esc(uniq[0]) + '" target="_blank" rel="noreferrer">🔗 打开原链接</a>' : '') +
+        (needBtnB ? '<button class="wcard-btn" type="button">展开详情</button>' : '') +
+        '</div>';
+    } else {
+      // 正文
+      var tt = tt0;
+      var hideTxt = onlyUrl ||
+                    (tt === '分享图片') || (tt === '分享视频') || (tt === '分享语音') ||
+                    (tt === '[动画表情]' && imgs.length) ||
+                    autoMuted;
+      if(txt && !hideTxt){
+        inner += (inner ? '<div style="margin-top:6px">' : '') + richText(txt) + (inner ? '</div>' : '');
+      }
+      // 链接（去重后）；动图表情消息不显示链接区
+      if(uniq.length && !hasEmoji){
+        var ls = '<div class="links">';
+        uniq.forEach(function(u){
+          ls += '<a href="' + esc(u) + '" target="_blank" rel="noreferrer">🔗 ' + hl(u) + '</a>';
+        });
+        ls += '</div>';
+        inner += ls;
+      }
+      if(isWboxCard && !imgs.length) inner += '<div class="vid">（动图表情，未能保存）</div>';
+    }
+
+    if(m.type === 'video') inner += '<div class="vid">▶ 视频（备份中保存了封面图）</div>';
+    if(m.type === 'voice') inner += '<div class="vid">🎙 语音消息（备份中保存了封面图）</div>';
+
+    /* 内容为空时的类型兜底占位（[文字] / [图片] / …）。
+       ⚠ 被「隐藏自动回复」挡掉正文的消息**不能**走这个兜底：它本来就没别的可显示，
+         兜底一出就变成「一个只剩 [文字]、看不出来是什么」的气泡
+         —— 这正是 2026-09-16 用户报的那个 bug。
+       autoMuted 那一支是**防御性的**：按现在的策略（上下文里直接 ctxMuted 跳过 +
+       列表里 applyFilter 排除），它其实走不到。留着是为了万一以后改成
+       「上下文里显示占位」,不会又退回 [文字]。 */
+    var cls;
+    if(isHidMsg){
+      /* 单独隐藏：整条只留虚线占位条。正文 / 图片 / 卡片 / 链接一律不进 DOM，
+         所以隐藏之后不管搜什么词都带不出内容。 */
+      inner = '<span>🙈 这条消息已隐藏</span>' +
+              '<button class="hbtn" type="button" title="恢复这条消息">恢复</button>';
+      cls = 'hidb';
+    } else {
+      if(!inner) inner = autoMuted
+        ? '<span class="mutedph">🙈 自动回复已隐藏</span>'
+        : '<span style="opacity:.6">[' + esc(TYPE_LABEL[m.type] || m.type) + ']</span>';
+      cls = 'bubble' + (imgs.length && !txt ? ' plain' : '') +
+            ((isWeiboCard || isBiliCard) ? ' has-card' : '');
+    }
+    var wrap = 'msg' + (isMe ? ' me' : '') +
+               (opt.inctx ? ' ctx' : '') +
+               (isExpand ? ' hit' : '') +
+               (isCtxHit ? ' hitsoft' : '');
+    return '<div class="' + wrap + '"' +
+      (m._ai == null ? '' : ' data-ai="' + m._ai + '"') +
+      (idx == null ? '' : ' data-i="' + idx + '"') + '>' + avatar(m) +
+      '<div class="body"><div class="meta"><span>' + esc(isMe ? (META.self_name || '我') : (META.peer_name || 'TA')) + '</span>' +
+      '<span title="' + esc(fmt(m.ts)) + '">' + hhmm(m.ts) + '</span>' +
+      (isExpand ? '<span class="hitbadge" title="这是你搜索命中的那条消息">命中</span>' : '') +
+      (isCtxHit ? '<span title="这条也是搜索结果，只是不在你展开的那条旁边">· 命中</span>' : '') +
+      '</div>' +
+      '<div class="' + cls + '"' +
+        (isHidMsg ? ' data-unhide="' + esc(mId(m)) + '" title="点击恢复这条消息"' : '') + '>' +
+        inner + '</div>' +
+      ctxBar(m, opt) + '</div></div>';
+  }
+
+  /* ---------- 搜索结果：展开上下文 ----------
+     搜索结果里每条命中的消息都是孤立的，看不到它前后的对话。
+     点消息下方的「↕ 展开上下文」，就把这条消息在【完整会话】里的
+     相邻消息一并显示出来（上下文不受当前搜索/筛选条件影响，
+     显示的是真实的原始对话）。 */
+  var CTX_FIRST = 3;    // 首次展开：前后各 3 条
+  var CTX_STEP  = 5;    // 之后每点一次「加载更多」：该侧再 +5 条
+
+  // 命中消息下方的操作条
+  function ctxBar(m, opt){
+    if(!opt.hit || !st.q || !st.list.length) return '';
+    var ai = m._ai;
+    if(ai == null) return '';
+    var ex = st.ctx[ai];
+    if(!ex){
+      return '<div class="ctxbar"><button type="button" data-ctx="open" data-ai="' + ai +
+             '" title="显示这条消息在完整会话中的前后对话">↕ 展开上下文 <i>前后各 ' + CTX_FIRST + ' 条</i></button></div>';
+    }
+    var upRoom = ai - ex.up, downRoom = (ALL.length - 1 - ai) - ex.down;
+    return '<div class="ctxbar">' +
+      '<span class="ctxnum" title="上下文来自完整会话，不受当前搜索/筛选影响">已展开：更早 ' +
+        ex.up + ' 条 · 更晚 ' + ex.down + ' 条</span>' +
+      (upRoom > 0 ? '<button type="button" data-ctx="more1" data-owners="' + ai +
+        '" data-dir="up" title="再往前看 ' + Math.min(CTX_STEP, upRoom) + ' 条">↑ 更早 <i>+' +
+        Math.min(CTX_STEP, upRoom) + '</i></button>' : '') +
+      (downRoom > 0 ? '<button type="button" data-ctx="more1" data-owners="' + ai +
+        '" data-dir="down" title="再往后看 ' + Math.min(CTX_STEP, downRoom) + ' 条">↓ 更晚 <i>+' +
+        Math.min(CTX_STEP, downRoom) + '</i></button>' : '') +
+      '<button type="button" data-ctx="close" data-ai="' + ai + '">收起</button></div>';
+  }
+
+  // 上下文区块两端的分隔条：还能加载就出按钮，到头了就出提示
+  function ctxBarHtml(it){
+    var isUp = it.dir === 'up', left = 1e9;
+    for(var i = 0; i < it.owners.length; i++){
+      var o = it.owners[i], ex = st.ctx[o];
+      if(!ex) continue;
+      var l = isUp ? (o - ex.up) : (ALL.length - 1 - o - ex.down);
+      if(l < left) left = l;                 // 取最保守的那个，保证点了不会「假加载」
+    }
+    if(!it.owners.some(function(o){ return st.ctx[o]; })) return '';
+    if(left <= 0){
+      return '<div class="ctxmore"><span class="ctxend">' +
+             (isUp ? '↑ 这已经是你们最早的对话' : '↓ 这已经是最后一条消息') + '</span></div>';
+    }
+    return '<div class="ctxmore"><button type="button" data-ctx="more1" data-owners="' +
+           it.owners.join(',') + '" data-dir="' + it.dir + '">' +
+           (isUp ? '↑ 加载更早的上下文' : '↓ 加载更晚的上下文') +
+           ' <i>+' + Math.min(CTX_STEP, left) + ' 条</i></button></div>';
+  }
+
+  // 把「窗口内的搜索结果」和「已展开的上下文」合并成一条按会话顺序排列的清单。
+  // 同一条消息只出现一次；若它同时是搜索结果，会保留命中标记。
+  function buildItems(start, end){
+    var items = [], byAi = {};
+    function put(ai, li, inctx){
+      var it = byAi[ai];
+      if(it){
+        if(li != null){ it.hit = true; it.li = li; }
+        if(inctx) it.inctx = true;
+        return;
+      }
+      byAi[ai] = it = { k:'m', ai:ai, m:ALL[ai], li:(li == null ? null : li),
+                        hit:(li != null), inctx:!!inctx };
+      items.push(it);
+    }
+    // 分隔条按【位置】去重：两条命中的上下文窗口重叠时，
+    // 同一条分隔条只画一次，点一下就为所有相关命中加载。
+    function bar(pos, dir, owner){
+      var key = dir + '@' + pos;
+      var it = byAi[key];
+      if(it){
+        if(it.owners.indexOf(owner) < 0) it.owners.push(owner);
+        return;
+      }
+      byAi[key] = it = { k:'bar', ai:pos, dir:dir, owners:[owner] };
+      items.push(it);
+    }
+    var i, k, ai, ex, from, to;
+    /* 上下文里要跳过的消息：
+       · 自动回复 —— 「隐藏自动回复」开着时它在列表里已被排除，上下文再冒出来
+         就自相矛盾；而且正文被 hideTxt 挡掉后只剩一个没意义的 [文字] 占位
+         （2026-09-16 用户报的 bug：截图里就是这条路径）。
+       · 单独隐藏的消息**不跳过** —— 留个占位条，用户才知道这里原本有内容、能点回来。 */
+    function ctxMuted(k){
+      var mm = ALL[k];
+      return !!(mm && st.hideAuto && msgKind(mm) === 'auto');
+    }
+    for(i = start; i < end; i++){                       // 先登记所有搜索结果，
+      var mm = st.list[i];                              // 后面才知道哪条上下文「也命中了」
+      if(mm && mm._ai != null) put(mm._ai, i, false);
+    }
+    for(i = start; i < end; i++){
+      var m = st.list[i];
+      if(!m || m._ai == null) continue;
+      ai = m._ai;
+      ex = st.ctx[ai];
+      if(!ex) continue;
+      // 两条分隔条总是画出来：还能加载就出按钮，到会话首/尾就出提示
+      from = Math.max(0, ai - ex.up);
+      bar(from - 0.4, 'up', ai);
+      for(k = from; k < ai; k++) if(!ctxMuted(k)) put(k, null, true);
+      to = Math.min(ALL.length - 1, ai + ex.down);
+      for(k = ai + 1; k <= to; k++) if(!ctxMuted(k)) put(k, null, true);
+      bar(to + 0.4, 'down', ai);
+    }
+    items.sort(function(x, y){ return x.ai - y.ai; });
+    return items;
+  }
+
+  function bindCtx(){
+    Array.prototype.forEach.call(chat.querySelectorAll('[data-ctx]'), function(el){
+      el.onclick = function(){
+        var act = el.dataset.ctx, ai;
+        if(act === 'open'){
+          ai = +el.dataset.ai;
+          st.ctx[ai] = { up:Math.min(CTX_FIRST, ai),
+                         down:Math.min(CTX_FIRST, ALL.length - 1 - ai) };
+          redrawCtx(ai);
+        }else if(act === 'close'){
+          ai = +el.dataset.ai;
+          delete st.ctx[ai];
+          redrawCtx(ai);
+        }else{
+          var owners = String(el.dataset.owners || '').split(',').map(Number)
+                         .filter(function(o){ return st.ctx[o]; });
+          var up = el.dataset.dir === 'up', anchor = null;
+          owners.forEach(function(o){
+            var ex = st.ctx[o];
+            if(up) ex.up = Math.min(ex.up + CTX_STEP, o);
+            else ex.down = Math.min(ex.down + CTX_STEP, ALL.length - 1 - o);
+            if(anchor == null) anchor = o;
+          });
+          if(anchor != null) redrawCtx(anchor);
+        }
+      };
+    });
+  }
+
+  // 重绘后把锚点消息钉回原来的位置，避免插入上下文导致视线跳动
+  function redrawCtx(ai){
+    var before = chat.querySelector('.msg[data-ai="' + ai + '"]');
+    var top = before ? before.getBoundingClientRect().top : null;
+    render();
+    if(top == null) return;
+    var after = chat.querySelector('.msg[data-ai="' + ai + '"]');
+    if(!after) return;
+    var d = after.getBoundingClientRect().top - top;
+    if(d) window.scrollBy(0, d);
+  }
+
+  var chat = document.getElementById('chat');
+
+  function render(keepScroll){
+    var list = st.list;
+    if(!list.length){ chat.innerHTML = '<div class="empty">没有匹配的消息</div>'; return; }
+    var start = Math.max(0, st.win), end = Math.min(list.length, start + CHUNK);
+    var html = '';
+    if(start > 0) html += '<div class="more"><button id="moreTop">↑ 加载更早的 '+start.toLocaleString()+' 条</button></div>';
+    var items = buildItems(start, end), last = null;
+    for(var j=0;j<items.length;j++){
+      var it = items[j];
+      if(it.k === 'bar'){ html += ctxBarHtml(it); continue; }
+      var m = it.m;
+      var dk = m.ts ? dayKey(m.ts) : 'x';
+      if(dk !== last){
+        // data-m 取逻辑日的前 7 位 = 逻辑月，必须与 monthKey() 一致
+        html += '<div class="day"' + (m.ts ? ' data-m="' + dk.slice(0,7) + '" title="' + esc(dayTip(dk)) + '"' : '') +
+                '><span>' + (m.ts?dayLabel(m.ts):'时间未知') + '</span></div>';
+        last = dk;
+      }
+      html += renderBubble(m, it.li, it);
+    }
+    if(end < list.length) html += '<div class="more"><button id="moreBot">↓ 还有 '+(list.length-end).toLocaleString()+' 条</button></div>';
+    var prevH = chat.scrollHeight, prevTop = window.scrollY;
+    chat.innerHTML = html;
+    fixAvatars();
+    fixImgs();
+    bindCtx();
+    var mt = document.getElementById('moreTop'), mb = document.getElementById('moreBot');
+    if(mt) mt.onclick = function(){ st.win = Math.max(0, st.win - CHUNK); render(true); };
+    if(mb) mb.onclick = function(){ st.win = st.win + CHUNK; render(true); };
+    if(keepScroll && start > 0){ window.scrollTo(0, prevTop + (chat.scrollHeight - prevH)); }
+  }
+
+  function scrollToIndex(idx, block){
+    var list = st.list;
+    if(!list.length) return;
+    idx = Math.max(0, Math.min(list.length - 1, idx));
+    st.win = Math.max(0, Math.min(idx, list.length - CHUNK));
+    if(list.length - st.win < CHUNK) st.win = Math.max(0, list.length - CHUNK);
+    render();
+    requestAnimationFrame(function(){
+      var nodes = chat.querySelectorAll('.msg');
+      var target = idx - st.win;
+      if(nodes[target]){
+        var y = nodes[target].getBoundingClientRect().top + window.scrollY - 130;
+        window.scrollTo({ top: y, behavior: block || 'auto' });
+        nodes[target].style.transition = 'background .8s';
+      }
+      highlightMonth(idx);
+    });
+  }
+
+  /* ---------- 右侧时间轴（按月导航，宽屏显示） ---------- */
+  var MONTHS = [], curMonth = null;
+
+  function buildRail(){
+    var box = document.getElementById('months');
+    if(!box) return;
+    var map = {}, order = [];
+    st.list.forEach(function(m, i){
+      if(!m.ts) return;
+      var d = dayDate(m.ts);                 // 月份归属也用「减 5 小时」的逻辑日期
+      var k = ym(d);
+      var o = map[k];
+      if(!o){
+        o = map[k] = { k:k, start:i, n:0, label:(d.getFullYear()+'年'+(d.getMonth()+1)+'月') };
+        order.push(k);
+      }
+      o.n++;
+    });
+    MONTHS = order.map(function(k){ return map[k]; });
+    var html = '';
+    for(var i = MONTHS.length - 1; i >= 0; i--){
+      var o = MONTHS[i];
+      html += '<div class="mo" data-m="' + o.k + '" title="' + o.label + '（' + o.n + ' 条）">' +
+              '<span>' + o.label + '</span><i>' + o.n + '</i></div>';
+    }
+    box.innerHTML = html || '<div class="mo" style="cursor:default">无</div>';
+    Array.prototype.forEach.call(box.querySelectorAll('.mo[data-m]'), function(el){
+      el.onclick = function(){ jumpMonth(el.dataset.m); };
+    });
+    curMonth = null;
+    highlightMonth();
+  }
+
+  function jumpMonth(k){
+    for(var i = 0; i < MONTHS.length; i++){
+      if(MONTHS[i].k === k){ scrollToIndex(MONTHS[i].start, 'smooth'); return; }
+    }
+  }
+
+  // 滚动时点亮当前所在月份；fallbackIdx 用于量不到坐标时（离线渲染）兜底
+  function highlightMonth(fallbackIdx){
+    var days = chat.querySelectorAll('.day[data-m]'), k = null, measurable = false;
+    for(var i = 0; i < days.length; i++){
+      var r = days[i].getBoundingClientRect();
+      if(r.bottom) measurable = true;
+      if(r.bottom > 96){ k = days[i].dataset.m; break; }
+    }
+    // 量不到真实坐标时，退回「目标消息 / 渲染窗口起点」所在月份
+    if(!measurable){
+      var m0 = st.list[fallbackIdx != null ? fallbackIdx : st.win];
+      k = (m0 && m0.ts) ? monthKey(m0.ts) : (days.length ? days[days.length-1].dataset.m : null);
+    }
+    if(k === curMonth) return;
+    curMonth = k;
+    Array.prototype.forEach.call(document.querySelectorAll('#months .mo[data-m]'), function(el){
+      el.classList.toggle('on', el.dataset.m === k);
+    });
+  }
+
+  var railTick = 0;
+  onWin('scroll', function(){
+    if(railTick) return;
+    railTick = requestAnimationFrame(function(){ railTick = 0; highlightMonth(); });
+  }, {passive:true});
+
+  /* ---------- 交互 ---------- */
+  var qEl = document.getElementById('q');
+  var t = null;
+  qEl.addEventListener('input', function(){
+    document.getElementById('qclr').style.display = qEl.value ? 'block' : 'none';
+    clearTimeout(t);
+    t = setTimeout(function(){
+      st.q = qEl.value; st.win = 0; st.hitIdx = -1;
+      applyFilter();
+      if(st.q && st.list.length){ st.hitIdx = st.list.length - 1; scrollToIndex(st.hitIdx); }
+      else render();
+      updateHitNav();
+    }, 200);
+  });
+  document.getElementById('qclr').onclick = function(){
+    qEl.value = ''; document.getElementById('qclr').style.display='none';
+    st.q=''; st.win=0; st.hitIdx=-1; applyFilter(); render(); updateHitNav();
+  };
+  // 在匹配结果之间跳动：↑ 更早、↓ 更新
+  function gotoHit(dir){
+    if(!st.list.length) return;
+    if(st.hitIdx < 0) st.hitIdx = st.list.length - 1;
+    else st.hitIdx = Math.max(0, Math.min(st.list.length - 1, st.hitIdx + dir));
+    scrollToIndex(st.hitIdx, 'smooth');
+    updateHitNav();
+  }
+  document.getElementById('hitPrev').onclick = function(){ gotoHit(-1); };
+  document.getElementById('hitNext').onclick = function(){ gotoHit(1); };
+
+  onDoc('keydown', function(e){
+    if(e.key === '/' && document.activeElement !== qEl){ e.preventDefault(); qEl.focus(); }
+    if(e.key === 'Escape'){ closeMenu(); closeLb(); if(document.activeElement===qEl) qEl.blur(); }
+  });
+  qEl.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); gotoHit(e.shiftKey ? -1 : 1); }
+  });
+
+  // 类型筛选（不含自动回复开关）
+  Array.prototype.forEach.call(document.querySelectorAll('.chip[data-f]'), function(c){
+    c.onclick = function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.chip[data-f]'), function(x){ x.setAttribute('aria-pressed','false'); });
+      c.setAttribute('aria-pressed','true');
+      st.filter = c.dataset.f; st.win = 0; st.hitIdx = -1; applyFilter();
+      if(st.list.length) scrollToIndex(st.list.length - 1); else render();
+    };
+  });
+
+  /* ---------- 高级筛选（P1-5）----------
+     四个维度，全部与上面的快捷筛选、搜索词叠加生效：
+       ① 消息类型：下拉项**从数据里现算**（不同数据集/会话的类型不一样，硬编码会漏）
+       ② 日期区间：起止都含当天
+       ③ 搜索词按正则解释（写错了退回普通匹配，不炸页面）
+       ④ 只看「图内有字」/「有图描述」—— 复用本地 OCR / 图片描述索引
+     全部纯本地内存运算，不发任何请求。 */
+  (function initAdvFilter(){
+    var selType = document.getElementById('advType');
+    if(selType){
+      var cnt = {}, label = {};
+      ALL.forEach(function(m){
+        var t = m.type || 'other';
+        cnt[t] = (cnt[t] || 0) + 1;
+        if(!label[t]) label[t] = TYPE_LABEL[t] || t;
+      });
+      Object.keys(cnt).sort(function(a, b){ return cnt[b] - cnt[a]; }).forEach(function(t){
+        var o = document.createElement('option');
+        o.value = t;
+        o.textContent = label[t] + '（' + cnt[t].toLocaleString() + ' 条）';
+        selType.appendChild(o);
+      });
+      selType.value = 'all';
+      selType.onchange = function(){
+        st.type = this.value; st.win = 0; st.hitIdx = -1;
+        applyFilter();
+        if(st.list.length) scrollToIndex(st.list.length - 1); else render();
+      };
+    }
+
+    var sinceEl = document.getElementById('advSince'), untilEl = document.getElementById('advUntil');
+    function onDate(){
+      // 起止写反了自动对调，别让人对着空结果发愣
+      if(sinceEl.value && untilEl.value && sinceEl.value > untilEl.value){
+        var tmp = sinceEl.value; sinceEl.value = untilEl.value; untilEl.value = tmp;
+      }
+      st.since = sinceEl.value; st.until = untilEl.value;
+      st.win = 0; st.hitIdx = -1;
+      applyFilter();
+      if(st.list.length) scrollToIndex(st.list.length - 1); else render();
+    }
+    if(sinceEl) sinceEl.onchange = onDate;
+    if(untilEl) untilEl.onchange = onDate;
+
+    [['advRegex','regex'], ['advOcr','onlyOcr'], ['advVlm','onlyVlm']].forEach(function(pair){
+      var el = document.getElementById(pair[0]);
+      if(!el) return;
+      el.onclick = function(){
+        st[pair[1]] = !st[pair[1]];
+        el.setAttribute('aria-pressed', st[pair[1]] ? 'true' : 'false');
+        st.win = 0; st.hitIdx = -1;
+        applyFilter();
+        if(st.list.length) scrollToIndex(st.list.length - 1); else render();
+      };
+    });
+
+    var rst = document.getElementById('advReset');
+    if(rst) rst.onclick = function(){ resetAllFilters(); };
+  })();
+
+  /* 清空全部条件：搜索词 / 快捷筛选 / 高级筛选 / 自动回复开关 */
+  function resetAllFilters(){
+    st.q = ''; st.filter = 'all'; st.type = 'all';
+    st.since = ''; st.until = '';
+    st.regex = false; st.onlyOcr = false; st.onlyVlm = false;
+    st.hideAuto = false; st.win = 0; st.hitIdx = -1; st.ctx = {};
+    try{ localStorage.setItem('dm-hide-auto-' + SRC.key, '0'); }catch(e){}
+    qEl.value = ''; document.getElementById('qclr').style.display = 'none';
+    var ty = document.getElementById('advType');  if(ty) ty.value = 'all';
+    var sd = document.getElementById('advSince'); if(sd) sd.value = '';
+    var ud = document.getElementById('advUntil'); if(ud) ud.value = '';
+    ['advRegex','advOcr','advVlm'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.setAttribute('aria-pressed','false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.chip[data-f]'), function(x){
+      x.setAttribute('aria-pressed', x.dataset.f === 'all' ? 'true' : 'false');
+    });
+    updateAutoChip();
+    updateAdvCnt();
+    applyFilter();
+    if(st.list.length) scrollToIndex(st.list.length - 1); else render();
+    updateHitNav();
+  }
+
+  // 一键隐藏 / 显示对方的自动回复
+  function setHideAuto(v){
+    st.hideAuto = !!v;
+    st.win = 0; st.hitIdx = -1;
+    try{ localStorage.setItem('dm-hide-auto-' + SRC.key, st.hideAuto ? '1' : '0'); }catch(e){}
+    updateAutoChip();
+    applyFilter();
+    if(st.list.length) scrollToIndex(st.list.length - 1); else render();
+  }
+  document.getElementById('autoChip').onclick = function(){ setHideAuto(!st.hideAuto); };
+  document.getElementById('hidChip').onclick = function(){ armRestoreAll(); };
+  refreshHidden();
+
+  /* ==========================================================
+     右键菜单：「隐藏这条消息」
+     ----------------------------------------------------------
+     · 菜单节点挂在 .layout 里 —— resetDom() 换掉 .layout 之后它自然消失，
+       下一次 boot 重建一份，不会跨数据源残留（#chat.innerHTML 重绘也不影响它）。
+     · 事件委托挂到 document 上（用 onDoc 记账，切数据源时会摘掉），
+       所以行节点被重绘多少次都不用重新绑定。
+     ========================================================== */
+  var LAYOUT = document.querySelector('.layout');
+  var menuEl = document.createElement('div');
+  menuEl.className = 'cmenu';
+  menuEl.hidden = true;
+  menuEl.innerHTML =
+    '<button type="button" data-act="hide"></button>' +
+    '<div class="sep"></div>' +
+    '<button type="button" data-act="copy">📋 复制文本</button>';
+  LAYOUT.appendChild(menuEl);
+
+  var menuAi = null, suppressClick = 0;
+  function closeMenu(){
+    if(menuEl.hidden) return;
+    menuEl.hidden = true;
+    menuAi = null;
+  }
+  function openMenu(ai, x, y){
+    var m = ALL[ai];
+    if(!m) return;
+    menuAi = ai;
+    var hid = isHid(m);
+    var hb = menuEl.querySelector('[data-act="hide"]');
+    hb.textContent = hid ? '↩ 恢复这条消息' : '🙈 隐藏这条消息';
+    hb.disabled = !mId(m);                    // 没有稳定 id 就不给隐藏（理论上不存在）
+    menuEl.querySelector('[data-act="copy"]').disabled = !(m.text || '');
+    menuEl.hidden = false;
+    var r = menuEl.getBoundingClientRect();   // 先量再定位，避免菜单被视口裁掉
+    menuEl.style.left = Math.max(6, Math.min(x, window.innerWidth  - r.width  - 6)) + 'px';
+    menuEl.style.top  = Math.max(6, Math.min(y, window.innerHeight - r.height - 6)) + 'px';
+    /* 触屏长按结束时浏览器还会补一个 click，别让它顺手把刚弹出的菜单关掉 */
+    suppressClick = Date.now() + 420;
+  }
+
+  /* 隐藏/恢复都要「重算列表但不丢上下文」：
+     applyFilter() 会把 st.ctx 清空（那是有意为之：换了搜索词就重来），
+     但这里只是藏/放了一条消息，把用户好不容易展开的上下文弄没了很烦。 */
+  function refilterKeepCtx(){
+    var keep = st.ctx;
+    applyFilter();
+    st.ctx = keep;
+    render();
+  }
+
+  menuEl.addEventListener('click', function(ev){
+    var b = ev.target.closest ? ev.target.closest('button[data-act]') : null;
+    if(!b || b.disabled) return;
+    var ai = menuAi, act = b.dataset.act;
+    closeMenu();
+    var m = (ai == null) ? null : ALL[ai];
+    if(!m) return;
+    if(act === 'hide'){
+      var wasHid = isHid(m);
+      if(!setHidden(m, !wasHid)) return;
+      refilterKeepCtx();
+      if(wasHid){
+        // 恢复了就把它滚进视野，否则「点了没反应」很容易被当成没生效
+        var li = st.list.indexOf(m);
+        if(li >= 0) scrollToIndex(li);
+      }
+      toast(wasHid ? '已恢复这条消息'
+                   : '已隐藏这条消息 · 想找回来点侧栏「🙈 已隐藏」');
+    } else if(act === 'copy'){
+      toast(copyText(m.text || '') ? '已复制到剪贴板' : '复制失败，请手动选中文字');
+    }
+  });
+
+  function copyText(s){
+    s = String(s == null ? '' : s);
+    if(!s) return false;
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(s);
+        return true;
+      }
+    }catch(e){}
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = s;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.select();
+      if(ta.setSelectionRange) ta.setSelectionRange(0, ta.value.length);
+      var ok = document.execCommand('copy');
+      ta.parentNode.removeChild(ta);
+      return !!ok;
+    }catch(e){ return false; }
+  }
+
+  onDoc('contextmenu', function(ev){
+    var row = (ev.target && ev.target.closest) ? ev.target.closest('#chat .msg[data-ai]') : null;
+    if(!row){ closeMenu(); return; }   // 右键别处：不拦，浏览器原生菜单照常出现
+    ev.preventDefault();
+    openMenu(+row.dataset.ai, ev.clientX, ev.clientY);
+  });
+
+  /* 点占位条 = 恢复这条消息；点别处 = 收起菜单 */
+  onDoc('click', function(ev){
+    if(Date.now() < suppressClick) return;
+    var un = (ev.target && ev.target.closest) ? ev.target.closest('[data-unhide]') : null;
+    if(un){ restoreOne(un.dataset.unhide); closeMenu(); return; }
+    closeMenu();
+  });
+
+  /* 触屏没有右键：长按 550ms 弹同一个菜单。
+     全程不 preventDefault，手指一移动（>10px，判定为滚动）就取消，不影响正常滚动。 */
+  var lpTimer = null, lpX = 0, lpY = 0;
+  function lpCancel(){ clearTimeout(lpTimer); lpTimer = null; }
+  onDoc('touchstart', function(ev){
+    var t0 = ev.touches && ev.touches[0];
+    var row = (t0 && ev.target && ev.target.closest) ? ev.target.closest('#chat .msg[data-ai]') : null;
+    if(!t0 || !row) return;
+    lpX = t0.clientX; lpY = t0.clientY;
+    var ai = +row.dataset.ai;
+    lpCancel();
+    lpTimer = setTimeout(function(){ lpCancel(); openMenu(ai, lpX, lpY); }, 550);
+  }, { passive:true });
+  onDoc('touchmove', function(ev){
+    var t0 = ev.touches && ev.touches[0];
+    if(!lpTimer || !t0) return;
+    if(Math.abs(t0.clientX - lpX) > 10 || Math.abs(t0.clientY - lpY) > 10) lpCancel();
+  }, { passive:true });
+  onDoc('touchend', lpCancel);
+  onDoc('touchcancel', lpCancel);
+  onWin('resize', closeMenu);
+  onWin('scroll', closeMenu);
+  document.getElementById('jump').onchange = function(){
+    var v = this.value; if(!v) return;
+    // 跳到某个「逻辑日」= 该日 05:00 起；沿用同一套边界，别在这里另开口径
+    var target = dayStartTs(v);
+    if(!target) return;
+    var list = st.list;
+    for(var i=0;i<list.length;i++){ if(list[i].ts && list[i].ts >= target){ scrollToIndex(i, 'smooth'); return; } }
+    scrollToIndex(list.length - 1, 'smooth');
+  };
+  function goTop(){ st.win = 0; render(); window.scrollTo({top:0,behavior:'smooth'}); }
+  function goBot(){ scrollToIndex(st.list.length - 1, 'smooth'); }
+  ['toTop','toTop2'].forEach(function(id){ var el = document.getElementById(id); if(el) el.onclick = goTop; });
+  ['toBot','toBot2'].forEach(function(id){ var el = document.getElementById(id); if(el) el.onclick = goBot; });
+  document.getElementById('themeBtn').onclick = function(){
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    var nx = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', nx);
+    try{ localStorage.setItem('dm-theme', nx); }catch(e){}
+  };
+  try{
+    var saved = localStorage.getItem('dm-theme');
+    if(saved) document.documentElement.setAttribute('data-theme', saved);
+  }catch(e){}
+
+  /* ==========================================================
+     按天互动统计
+     ----------------------------------------------------------
+     口径（全部在数据上核对过，数字实时来自本地备份）：
+       · 时间归属：消息时间戳 → 本机时区自然日 YYYY-MM-DD，一日一条，不跨日拆分
+       · 归属判定：接口返回的 from 字段（me / peer），不靠昵称或文案猜测
+       · 排除 3 类：自动回复、送礼物·助威通知、系统提示「你撤回了一条消息」
+       · 计入：文字、图片、分享微博卡片、视频/语音、动图表情、链接等全部真实消息
+     ========================================================== */
+  var RE_GIFT   = /^感谢您的助威支持|助威权益还有\d+天|^发出红包消息/;      // 送礼物/助威的系统通知
+  var RE_SYSTIP = /^(?:你|对方)撤回了一条消息$/;                             // 撤回提示，非发言内容
+
+  /* 一条消息算不算「真实发言」：
+     · 微博：接口没有「是否自动回复」字段，只能按接口原文精确匹配（3 类）
+     · B站 ：接口自带 msg_source，可以直接结构化判定，比猜文案可靠得多
+             msg_source 8=关注后 9=收到消息 10=关键词 11=大航海 → 自动回复
+                        17=互关自动消息      16=系统
+             msg_type   16=关注后的自动推送    5=撤回    18=系统提示
+                        10=官方通知 13=图片卡片 301~306=粉丝团提示 */
+  function msgKind(m){
+    if(SRC.key === 'bili'){
+      /* 实测口径（2026-09-15 首次全量 2,912 条）msg_type 只出现 1/2/5/6/7/10/14：
+           1=文字  2=图片  5=撤回  6=自定义表情  7=分享视频·相簿·专栏  10=官方通知  14=分享直播
+         下面 13 / 16 / 18 / 301~306 属防御性保留（别的会话可能出现，本会话未触发）。
+         ⚠ 分享卡片（7 / 14）算**真实发言**，与微博口径一致 —— 微博那边分享卡片也是计入的；
+           它们 content 里没有正文，全在 card.title，靠 haystack() 纳入搜索。 */
+      var s = m.msg_source | 0, mt = m.media_type;
+      if((s >= 8 && s <= 11) || s === 17) return 'auto';   // 关注后 / 收到消息 / 关键词 / 大航海 / 互关
+      if(mt === 16) return 'auto';                          // 关注后的自动推送
+      if(mt === 5 || mt === 10 || mt === 18) return 'sys';  // 撤回提示 + 官方通知（开播 / 视频上线 / 预约成功）
+      if(mt === 13) return 'gift';
+      if(mt >= 301 && mt <= 306) return 'gift';             // 粉丝团 / 大航海提示
+      if(m.from !== 'me' && m.from !== 'peer') return 'gift';
+      return 'count';
+    }
+    var t = (m.text || '').trim();
+    if(t === AUTO_REPLY) return 'auto';
+    if(RE_GIFT.test(t)) return 'gift';
+    if(RE_SYSTIP.test(t)) return 'sys';
+    return 'count';
+  }
+
+  var DAILY = null;
+  function buildDaily(){
+    if(DAILY) return DAILY;
+    var map = {}, excl = { auto:0, autoMe:0, autoPeer:0, gift:0, giftPeer:0, giftMe:0, sys:0, sysMe:0, sysPeer:0 };
+    var tmin = Infinity, tmax = -Infinity, noTs = 0;
+    /* 落在 00:00~05:00、因而归属「前一天」的消息数。
+       注意口径：**按全部消息**统计，不先剔掉自动回复 / 系统通知 ——
+       这个数字要回答的是「换日口径影响了多少条」，而不是「计入了多少条」，
+       所以刻意放在类型判断之前（口径说明里会把它报出来，也会被回归测试核对）。 */
+    var pre5 = 0;
+    ALL.forEach(function(m){
+      if(!m.ts){ noTs++; return; }
+      if(m.ts < tmin) tmin = m.ts;
+      if(m.ts > tmax) tmax = m.ts;
+      if(new Date(m.ts).getHours() < DAY_CUT_H) pre5++;
+      var kind = msgKind(m);
+      if(kind !== 'count'){
+        excl[kind]++;
+        if(kind === 'auto'){ if(m.from === 'me') excl.autoMe++; else excl.autoPeer++; }
+        if(kind === 'gift'){ if(m.from === 'me') excl.giftMe++; else excl.giftPeer++; }
+        if(kind === 'sys'){ if(m.from === 'me') excl.sysMe++; else excl.sysPeer++; }
+        return;
+      }
+      if(m.from !== 'me' && m.from !== 'peer') return;
+      var k = dayKey(m.ts), o = map[k] || (map[k] = { me:0, peer:0 });
+      o[m.from]++;
+    });
+    /* 连续日期轴：按**逻辑日**逐日补齐，没有消息的日子补 0，保证折线的时间间隔真实。
+       起点/终点都由 dayKey() 定位，再走 dayNoon() 逐日 +1 —— 不要拿 tmin/tmax 直接
+       setHours(0,0,0,0)：那是自然日的算法，会和 dayKey() 差一天。 */
+    var dates = [], me = [], peer = [];
+    var cur = dayNoon(dayKey(tmin)), lastD = dayNoon(dayKey(tmax));
+    while(cur && lastD && cur.getTime() <= lastD.getTime()){
+      var kk = ymd(cur), oo = map[kk];
+      dates.push(kk); me.push(oo ? oo.me : 0); peer.push(oo ? oo.peer : 0);
+      cur.setDate(cur.getDate() + 1);
+    }
+    var tot = { me:0, peer:0, days:dates.length, activeMe:0, activePeer:0, both:0, zero:0, pre5:pre5 };
+    for(var i = 0; i < dates.length; i++){
+      tot.me += me[i]; tot.peer += peer[i];
+      if(me[i]) tot.activeMe++;
+      if(peer[i]) tot.activePeer++;
+      if(me[i] && peer[i]) tot.both++;
+      if(!me[i] && !peer[i]) tot.zero++;
+    }
+    DAILY = { dates:dates, me:me, peer:peer, excl:excl, noTs:noTs, tot:tot };
+    return DAILY;
+  }
+
+  // 7 日移动平均（开头不足 7 天的位置留空，不画）
+  function movingAvg(arr, n){
+    var out = new Array(arr.length), sum = 0;
+    for(var i = 0; i < arr.length; i++){
+      sum += arr[i];
+      if(i >= n) sum -= arr[i - n];
+      out[i] = i >= n - 1 ? sum / n : null;
+    }
+    return out;
+  }
+
+  var stt = { range:0, avg:true, dual:true };
+  var GEO = null;
+
+  function statSlice(){
+    var D = buildDaily(), n = D.dates.length;
+    var from = stt.range > 0 ? Math.max(0, n - stt.range) : 0;
+    return { dates:D.dates.slice(from), me:D.me.slice(from), peer:D.peer.slice(from), D:D };
+  }
+
+  function renderKpis(S){
+    var n = S.dates.length, sMe = 0, sPeer = 0, both = 0, zero = 0, peakMe = 0, peakDay = S.dates[0] || '';
+    for(var i = 0; i < n; i++){
+      sMe += S.me[i]; sPeer += S.peer[i];
+      if(S.me[i] && S.peer[i]) both++;
+      if(!S.me[i] && !S.peer[i]) zero++;
+      if(S.me[i] > peakMe){ peakMe = S.me[i]; peakDay = S.dates[i]; }
+    }
+    var avg = function(v){ return n ? (v / n).toFixed(1) : '0'; };
+    document.getElementById('kpis').innerHTML =
+      '<div class="kpi me"><b>' + sMe.toLocaleString() + '<i>条</i></b><span>我发出 · 日均 ' + avg(sMe) + ' 条</span></div>' +
+      '<div class="kpi peer"><b>' + sPeer.toLocaleString() + '<i>条</i></b><span>' + esc(PEER_LABEL) + '回复 · 日均 ' + avg(sPeer) + ' 条</span></div>' +
+      '<div class="kpi"><b>' + both.toLocaleString() + '<i>/ ' + n.toLocaleString() + ' 天</i></b><span>有来有回（当天双方都发过）</span></div>' +
+      '<div class="kpi"><b>' + peakMe.toLocaleString() + '<i>条</i></b><span>我的单日峰值 · ' + esc(peakDay) + '</span></div>';
+    document.getElementById('statRange').textContent =
+      (S.dates[0] || '') + ' ~ ' + (S.dates[n - 1] || '') + '　共 ' + n.toLocaleString() + ' 天' +
+      (zero ? '（' + zero.toLocaleString() + ' 天无消息）' : '') +
+      '　· 按每天 ' + DAY_CUT_S + ' 分界';
+  }
+
+  function drawChart(){
+    var S = statSlice(), cv = document.getElementById('chart'), wrap = document.getElementById('chartwrap');
+    var n = S.dates.length;
+    if(!n){ cv.innerHTML = ''; GEO = null; return; }
+    var W = Math.max(300, wrap.clientWidth - 12), H = 320;
+    var padL = 44, padR = stt.dual ? 44 : 16, padT = 22, padB = 30;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var step = n > 1 ? plotW / (n - 1) : 0;
+    var maxMe = 1, maxPeer = 1;
+    for(var i = 0; i < n; i++){ if(S.me[i] > maxMe) maxMe = S.me[i]; if(S.peer[i] > maxPeer) maxPeer = S.peer[i]; }
+    var maxY = Math.max(maxMe, maxPeer);                 // 同轴：共用一套刻度
+    var maxY2 = stt.dual ? maxPeer : maxY;               // 独立量程：右轴给对方
+    var X = function(i){ return padL + i * step; };
+    var Y = function(v, mx){ return padT + (1 - v / mx) * plotH; };
+
+    function linePath(arr, mx){
+      var d = '', on = false;
+      for(var i = 0; i < arr.length; i++){
+        var v = arr[i];
+        if(v == null){ on = false; continue; }
+        d += (on ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v, mx).toFixed(1) + ' ';
+        on = true;
+      }
+      return d;
+    }
+    function areaPath(arr, mx){
+      var a = -1, b = -1;
+      for(var i = 0; i < arr.length; i++){ if(arr[i] != null){ if(a < 0) a = i; b = i; } }
+      if(a < 0) return '';
+      var yb = (H - padB).toFixed(1);
+      return linePath(arr, mx) + 'L' + X(b).toFixed(1) + ' ' + yb + ' L' + X(a).toFixed(1) + ' ' + yb + ' Z';
+    }
+
+    var meDraw = stt.avg ? movingAvg(S.me, 7) : S.me;
+    var peerDraw = stt.avg ? movingAvg(S.peer, 7) : S.peer;
+    var rawOpacity = stt.avg ? '0.5' : '1';
+    var rawWidth = stt.avg ? '1' : '1.6';
+
+    var g = '';
+    // 注意：SVG 的 presentation attribute（fill="var(--x)"）在 Chrome 里不解析 CSS 变量，
+    // 颜色一律走 style=""，主题切换才能实时生效。
+    // 横向网格 + 左轴刻度
+    for(var k = 0; k <= 4; k++){
+      var yy = padT + plotH * (1 - k / 4);
+      g += '<line x1="' + padL + '" y1="' + yy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + yy.toFixed(1) +
+           '" style="stroke:var(--line);stroke-width:1' + (k ? ';stroke-dasharray:3 4' : '') + '"/>';
+      g += '<text x="' + (padL - 7) + '" y="' + (yy + 4).toFixed(1) +
+           '" text-anchor="end" style="font-size:10.5px;fill:var(--muted)">' +
+           Math.round(maxY * k / 4) + '</text>';
+    }
+    if(stt.dual){
+      for(var k2 = 0; k2 <= 4; k2++){
+        var y2 = padT + plotH * (1 - k2 / 4);
+        g += '<text x="' + (W - padR + 7) + '" y="' + (y2 + 4).toFixed(1) +
+             '" style="font-size:10.5px;fill:var(--muted)">' + Math.round(maxY2 * k2 / 4) + '</text>';
+      }
+    }
+    // 轴标题放顶部左右角（放底部会和 X 轴日期刻度撞在一起）
+    if(stt.dual){
+      g += '<text x="' + padL + '" y="13" style="font-size:10.5px;font-weight:600;fill:var(--c-me)">我（条/天）</text>';
+      g += '<text x="' + (W - padR) + '" y="13" text-anchor="end" style="font-size:10.5px;font-weight:600;fill:var(--c-peer)">' + esc(PEER_LABEL) + '（条/天）</text>';
+    } else {
+      g += '<text x="' + padL + '" y="13" style="font-size:10.5px;fill:var(--muted)">两条同轴 · 条/天</text>';
+    }
+    // X 轴日期刻度：按可用宽度决定个数，窄屏才不会挤成一团
+    var maxTicks = Math.max(2, Math.min(6, Math.floor(plotW / 70)));
+    var ticks = n < 2 ? 1 : Math.min(maxTicks, n);
+    for(var t = 0; t < ticks; t++){
+      var idx = ticks === 1 ? 0 : Math.round((n - 1) * t / (ticks - 1));
+      var anchor = t === 0 ? 'start' : (t === ticks - 1 ? 'end' : 'middle');
+      g += '<text x="' + X(idx).toFixed(1) + '" y="' + (H - 9) + '" text-anchor="' + anchor +
+           '" style="font-size:10.5px;fill:var(--muted)">' + esc(S.dates[idx].slice(2)) + '</text>';
+    }
+    // 渐变填充 + 折线
+    g += '<defs>' +
+      '<linearGradient id="gMe" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" style="stop-color:var(--c-me);stop-opacity:0.46"/>' +
+        '<stop offset="100%" style="stop-color:var(--c-me);stop-opacity:0.02"/></linearGradient>' +
+      '<linearGradient id="gPeer" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" style="stop-color:var(--c-peer);stop-opacity:0.46"/>' +
+        '<stop offset="100%" style="stop-color:var(--c-peer);stop-opacity:0.02"/></linearGradient>' +
+      '</defs>';
+    g += '<path d="' + areaPath(S.me, maxY) + '" style="fill:url(#gMe)"/>';
+    g += '<path d="' + areaPath(S.peer, maxY2) + '" style="fill:url(#gPeer)"/>';
+    g += '<path d="' + linePath(S.me, maxY) + '" style="fill:none;stroke:var(--c-me);stroke-width:' + rawWidth +
+         ';stroke-opacity:' + rawOpacity + ';stroke-linejoin:round"/>';
+    g += '<path d="' + linePath(S.peer, maxY2) + '" style="fill:none;stroke:var(--c-peer);stroke-width:' + rawWidth +
+         ';stroke-opacity:' + rawOpacity + ';stroke-linejoin:round"/>';
+    if(stt.avg){
+      g += '<path d="' + linePath(meDraw, maxY) + '" style="fill:none;stroke:var(--c-me);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round"/>';
+      g += '<path d="' + linePath(peerDraw, maxY2) + '" style="fill:none;stroke:var(--c-peer);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round"/>';
+    }
+    // 悬停辅助元素
+    g += '<line id="hovline" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) +
+         '" style="stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3" opacity="0"/>';
+    g += '<circle id="hovdotM" r="3.5" style="fill:var(--c-me);stroke:var(--panel);stroke-width:1.5" opacity="0"/>';
+    g += '<circle id="hovdotP" r="3.5" style="fill:var(--c-peer);stroke:var(--panel);stroke-width:1.5" opacity="0"/>';
+    // 透明命中层：保证鼠标在图表空白处也能触发悬停/点击
+    g += '<rect x="' + padL + '" y="' + padT + '" width="' + plotW.toFixed(1) + '" height="' + plotH.toFixed(1) +
+         '" style="fill:transparent;pointer-events:all;cursor:crosshair"/>';
+
+    cv.setAttribute('width', W);
+    cv.setAttribute('height', H);
+    cv.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    cv.innerHTML = g;
+    GEO = { W:W, H:H, padL:padL, padR:padR, padT:padT, padB:padB, step:step, n:n, maxY:maxY, maxY2:maxY2, S:S, hoverIdx:null };
+    renderHint(S, maxY, maxY2);
+  }
+
+  // 一句话说明当前量程模式，避免「对方线为什么贴底 / 为什么这么高」的误读
+  function renderHint(S, maxY, maxY2){
+    var el = document.getElementById('chartHint');
+    if(!el) return;
+    var mMax = 0, pMax = 0;
+    for(var i = 0; i < S.me.length; i++){
+      if(S.me[i] > mMax) mMax = S.me[i];
+      if(S.peer[i] > pMax) pMax = S.peer[i];
+    }
+    var msg = '';
+    if(stt.dual && pMax && mMax){
+      msg = '两条线各自缩放：<b>左轴=我</b>（最高 ' + mMax + ' 条/天）、<b>右轴=' + esc(PEER_LABEL) + '</b>（最高 ' + pMax +
+            ' 条/天），看的是<b>趋势形状</b>；要比较真实量级请关掉「独立量程」。';
+    } else if(!pMax && !mMax){
+      msg = '这个区间里双方都没有消息。';
+    } else if(mMax && pMax / mMax < 0.25){
+      msg = '同轴对比：' + esc(PEER_LABEL) + '单日最高 ' + pMax + ' 条、我 ' + mMax + ' 条，' + esc(PEER_LABEL) + '那条几乎贴在底部 —— 点「独立量程」可展开看它的走势。';
+    } else if(!pMax){
+      msg = '同轴对比：这个区间里' + esc(PEER_LABEL) + '没有回复（同期我发出 ' + mMax + ' 条/天 峰值）。';
+    } else {
+      msg = '同轴对比：区间内我最高 ' + mMax + ' 条/天、' + esc(PEER_LABEL) + '最高 ' + pMax + ' 条/天。';
+    }
+    el.innerHTML = msg + '<span class="cutnote">' + esc(DAY_CUT_NOTE) + '</span>';
+    el.classList.toggle('on', !!msg);
+  }
+
+  function chartHover(clientX){
+    if(!GEO || !GEO.n) return;
+    var r = document.getElementById('chart').getBoundingClientRect();
+    var mx = clientX - r.left;
+    var i = GEO.step > 0 ? Math.round((mx - GEO.padL) / GEO.step) : 0;
+    i = Math.max(0, Math.min(GEO.n - 1, i));
+    GEO.hoverIdx = i;
+    var S = GEO.S, H = GEO.H, plotH = H - GEO.padT - GEO.padB;
+    var x = GEO.padL + i * GEO.step;
+    var yM = GEO.padT + (1 - S.me[i] / GEO.maxY) * plotH;
+    var yP = GEO.padT + (1 - S.peer[i] / GEO.maxY2) * plotH;
+    var set = function(id, attrs){
+      var el = document.getElementById(id); if(!el) return;
+      for(var a in attrs) el.setAttribute(a, attrs[a]);
+      el.setAttribute('opacity', '1');
+    };
+    set('hovline', { x1:x, x2:x });
+    set('hovdotM', { cx:x, cy:yM });
+    set('hovdotP', { cx:x, cy:yP });
+    var d = dayNoon(S.dates[i]);        // key 就是逻辑日，取正午求星期最稳
+    var w = ['日','一','二','三','四','五','六'][d.getDay()];
+    var tip = document.getElementById('tip');
+    tip.innerHTML = '<b>' + esc(S.dates[i]) + '</b> 星期' + w +
+      '<br><span class="mutedph">' + esc(DAY_CUT_NOTE) + '</span>' +
+      '<br><span class="dot" style="background:var(--c-me)"></span>我发出 <b>' + S.me[i] + '</b> 条' +
+      '<br><span class="dot" style="background:var(--c-peer)"></span>' + esc(PEER_LABEL) + '回复 <b>' + S.peer[i] + '</b> 条';
+    tip.classList.add('on');
+    var wrap = document.getElementById('chartwrap');
+    var tw = tip.offsetWidth, ww = wrap.clientWidth;
+    var left = x + 14;
+    if(left + tw > ww - 4) left = x - tw - 14;
+    tip.style.left = Math.max(4, left) + 'px';
+    tip.style.top = Math.max(4, Math.min(yM, yP) - 8) + 'px';
+  }
+
+  function hideHover(){
+    var tip = document.getElementById('tip');
+    if(tip) tip.classList.remove('on');
+    ['hovline','hovdotM','hovdotP'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.setAttribute('opacity','0');
+    });
+  }
+
+  function renderCaliber(){
+    var el = document.getElementById('caliber');
+    if(!el) return;
+    el.innerHTML = (SRC.key === 'bili') ? caliberBili() : caliberWeibo();
+  }
+
+  function caliberWeibo(){
+    var D = buildDaily(), e = D.excl, T = D.tot;
+    return '<details open><summary>统计口径与数据来源</summary><ul>' +
+      '<li><span class="em">数据来源</span>：本地备份 <code>data/messages.js</code>，共 ' + ALL.length.toLocaleString() +
+        ' 条（' + esc(D.dates[0]) + ' ~ ' + esc(D.dates[D.dates.length-1]) + '）。纯本地计算，不联网。</li>' +
+      '<li><span class="em">按「每天 05:00」分界</span>：一条消息归属<b>它前面最近的那个 05:00</b> 那一天 —— ' +
+        '即「当天 05:00 → 次日 05:00」，<b>00:00~05:00 的消息算前一天</b>（不按自然日 0 点切）。' +
+        '<b>数据里落在 00:00~05:00 的消息有 ' + T.pre5.toLocaleString() + ' 条</b>（占全部 ' +
+        (ALL.length ? (T.pre5 / ALL.length * 100).toFixed(1) : '0.0') + '%），它们全部归到前一天；' +
+        '一条消息只归属一天，不跨日拆分；时间轴按日<b>连续补齐</b>，没有消息的日子记 0（共 ' +
+        T.zero.toLocaleString() + ' 天），所以折线上的时间间隔是真实的。</li>' +
+      '<li><span class="em">归属判定</span>：用接口返回的 <code>from</code> 字段判定（<code>me</code> = 我 / <code>peer</code> = ' + esc(PEER_LABEL) + '），' +
+        '不靠昵称或文案猜测。区间内：我 ' + T.me.toLocaleString() + ' 条 / ' + esc(PEER_LABEL) + ' ' + T.peer.toLocaleString() + ' 条。</li>' +
+      '<li><span class="em">不计入</span>（3 类，全部按接口原文精确匹配）<ul>' +
+        '<li>自动回复「' + esc(AUTO_REPLY) + '」：' + e.auto.toLocaleString() + ' 条（' + esc(PEER_LABEL) + ' ' + e.autoPeer + ' · 我 ' + e.autoMe + '）</li>' +
+        '<li>送礼物 / 助威系统通知：' + e.gift + ' 条（' + esc(PEER_LABEL) + ' ' + e.giftPeer + ' · 我 ' + e.giftMe + '，含 1 条红包提示）</li>' +
+        '<li>撤回提示「你 / 对方撤回了一条消息」：' + e.sys + ' 条（我 ' + e.sysMe + ' · ' + esc(PEER_LABEL) + ' ' + e.sysPeer + '）</li>' +
+        '</ul></li>' +
+      '<li><span class="em">计入</span>：分享微博卡片、分享图片 / 视频 / 语音、动图表情、链接、文字等<b>全部真实消息</b>；' +
+        '被撤回但原文仍在的消息也计入（它确实发出过）。日常聊天里提到「礼物」两字的消息属于真实对话，<b>计入</b>。</li>' +
+      '<li><span class="em">看趋势</span>：默认叠加 7 日均线（细线是每日原始值，实线是均线），并默认开启<b>独立量程</b>（左轴=我、右轴=' + esc(PEER_LABEL) + '，两条线各自铺满图高）——' +
+        '因为双方量级相差数十倍（' + T.me.toLocaleString() + ' : ' + T.peer.toLocaleString() + '），同轴时' + esc(PEER_LABEL) + '那条会贴底看不见。' +
+        '想比较真实量级，关掉「独立量程」即可。点击图上任意一天可跳到那天的聊天记录。</li>' +
+      '</ul></details>';
+  }
+
+  function caliberBili(){
+    var D = buildDaily(), e = D.excl, T = D.tot;
+    return '<details open><summary>统计口径与数据来源</summary><ul>' +
+      '<li><span class="em">数据来源</span>：本地备份 <code>bili/messages.js</code>，共 ' + ALL.length.toLocaleString() +
+        ' 条（' + esc(D.dates[0]) + ' ~ ' + esc(D.dates[D.dates.length-1]) + '）。纯本地计算，不联网。</li>' +
+      '<li><span class="em">按「每天 05:00」分界</span>：一条消息归属<b>它前面最近的那个 05:00</b> 那一天 —— ' +
+        '即「当天 05:00 → 次日 05:00」，<b>00:00~05:00 的消息算前一天</b>（不按自然日 0 点切）。' +
+        '<b>数据里落在 00:00~05:00 的消息有 ' + T.pre5.toLocaleString() + ' 条</b>（占全部 ' +
+        (ALL.length ? (T.pre5 / ALL.length * 100).toFixed(1) : '0.0') + '%），它们全部归到前一天；' +
+        '一条消息只归属一天，不跨日拆分；时间轴按日<b>连续补齐</b>，没有消息的日子记 0（共 ' +
+        T.zero.toLocaleString() + ' 天），所以折线上的时间间隔是真实的。</li>' +
+      '<li><span class="em">归属判定</span>：用接口的 <code>sender_uid</code> 判定（= 我的 mid 记"我"、= ' +
+        esc(META.peer_name || '对方') + ' 的 mid 记"对方"），发送者为系统账号（uid 0）的不计入。区间内：我 ' +
+        T.me.toLocaleString() + ' 条 / 对方 ' + T.peer.toLocaleString() + ' 条。</li>' +
+      '<li><span class="em">不计入</span>（' + (e.gift ? '3' : '2') + ' 类，全部按接口字段结构化判定，不猜文案）<ul>' +
+        '<li><b>自动回复 / 自动消息</b>：' + e.auto.toLocaleString() + ' 条 —— <code>msg_source</code> 为 ' +
+        '8（关注后）、9（收到消息后）、10（关键词）、11（大航海），或 17（互关自动消息）；' +
+        '另有 <code>msg_type</code>=16 的关注后自动推送。' +
+        (META.auto_reply_top ? '其中出现最多的是「' + esc(String(META.auto_reply_top.text).slice(0, 40)) + '」共 ' +
+          META.auto_reply_top.n.toLocaleString() + ' 次。' : '') + '</li>' +
+        '<li><b>系统通知与撤回提示</b>：' + e.sys.toLocaleString() + ' 条 —— <code>msg_type</code> 5（撤回提示）、' +
+        '10（官方通知：直播开始 / 视频上线 / 预约成功）、18（系统提示），以及「你 / 对方撤回了一条消息」这类提示文本。</li>' +
+        (e.gift ? '<li><b>其它非双方消息</b>：' + e.gift.toLocaleString() + ' 条 —— 发送者既不是你们俩（系统账号），' +
+          '或 <code>msg_type</code> 13、301~306（粉丝团 / 大航海提示）。</li>' : '') +
+        '</ul></li>' +
+      '<li><span class="em">计入</span>：文字、图片、自定义表情、分享视频 / 专栏 / 动态 / 直播、视频推送、专栏推送、' +
+        'UP主赠言等<b>全部真实往来内容</b>；被撤回但原文仍在的消息也计入（它确实发出过）。</li>' +
+      '<li><span class="em">看趋势</span>：默认叠加 7 日均线（细线是每日原始值，实线是均线），并默认开启<b>独立量程</b>' +
+        '（左轴=我、右轴=对方，两条线各自铺满图高）。想比较真实量级，关掉「独立量程」即可。' +
+        '点击图上任意一天可跳到那天的聊天记录。</li>' +
+      '</ul></details>';
+  }
+
+  function openStat(){
+    document.getElementById('stat').classList.add('on');
+    renderKpis(statSlice());
+    renderCaliber();
+    /* 三块新增内容（日历热力图 / 聊天节律 / 高频词云）必须在这里渲染。
+       它们的渲染函数原本只被各自的开关按钮调用，结果面板一打开是空的 ——
+       移动端专项测试就是卡在这一条上（热力图 0 个 rect、词云 0 个词）。 */
+    renderHeat();
+    renderRhythm();
+    renderWords();
+    requestAnimationFrame(drawChart);
+  }
+  function closeStat(){
+    document.getElementById('stat').classList.remove('on');
+    hideHover();
+  }
+
+  // 点图上的某天 → 跳到那天的聊天记录
+  function jumpToDate(k){
+    var find = function(){
+      for(var i = 0; i < st.list.length; i++){
+        if(st.list[i].ts && dayKey(st.list[i].ts) === k) return i;
+      }
+      return -1;
+    };
+    var i = find();
+    if(i < 0){
+      // 被当前搜索 / 筛选（含高级筛选）滤掉了：先清空条件再找
+      st.q = ''; st.filter = 'all'; st.type = 'all';
+      st.since = ''; st.until = '';
+      st.regex = false; st.onlyOcr = false; st.onlyVlm = false;
+      st.hitIdx = -1;
+      qEl.value = ''; document.getElementById('qclr').style.display = 'none';
+      var ty = document.getElementById('advType');  if(ty) ty.value = 'all';
+      var sd = document.getElementById('advSince'); if(sd) sd.value = '';
+      var ud = document.getElementById('advUntil'); if(ud) ud.value = '';
+      ['advRegex','advOcr','advVlm'].forEach(function(id){
+        var el = document.getElementById(id); if(el) el.setAttribute('aria-pressed','false');
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.chip[data-f]'), function(x){
+        x.setAttribute('aria-pressed', x.dataset.f === 'all' ? 'true' : 'false');
+      });
+      applyFilter();
+      i = find();
+    }
+    closeStat();
+    if(i >= 0) scrollToIndex(i, 'smooth');
+  }
+
+  document.getElementById('statBtn').onclick = openStat;
+  document.getElementById('statClose').onclick = closeStat;
+  document.getElementById('stat').addEventListener('click', function(e){ if(e.target.id === 'stat') closeStat(); });
+  onDoc('keydown', function(e){
+    if(e.key === 'Escape' && document.getElementById('stat').classList.contains('on')) closeStat();
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#rangeSeg button'), function(b){
+    b.onclick = function(){
+      Array.prototype.forEach.call(document.querySelectorAll('#rangeSeg button'), function(x){ x.setAttribute('aria-pressed','false'); });
+      b.setAttribute('aria-pressed','true');
+      stt.range = parseInt(b.dataset.r, 10) || 0;
+      renderKpis(statSlice()); drawChart(); hideHover();
+    };
+  });
+  document.getElementById('avgTog').onclick = function(){
+    stt.avg = !stt.avg; this.setAttribute('aria-pressed', stt.avg ? 'true' : 'false'); drawChart();
+  };
+  document.getElementById('dualTog').onclick = function(){
+    stt.dual = !stt.dual; this.setAttribute('aria-pressed', stt.dual ? 'true' : 'false'); drawChart();
+  };
+  var chartEl = document.getElementById('chart');
+  chartEl.addEventListener('mousemove', function(e){ chartHover(e.clientX); });
+  chartEl.addEventListener('mouseleave', hideHover);
+  chartEl.addEventListener('click', function(){ if(GEO && GEO.hoverIdx != null) jumpToDate(GEO.S.dates[GEO.hoverIdx]); });
+  window.addEventListener('resize', function(){
+    if(document.getElementById('stat').classList.contains('on')) drawChart();
+  });
+
+  /* ---------- 灯箱 ---------- */
+  var lb = document.getElementById('lb'), lbi = document.getElementById('lbimg'),
+      lbalb = document.getElementById('lbinfo'), lbSave = document.getElementById('lbsave'), cur = -1;
+  function openLb(i){
+    if(i<0 || i>=allImages.length) return;
+    cur = i; var im = allImages[i];
+    lbi.src = im.local || im.url; lbSave.href = im.local || im.url;
+    lbSave.download = (im.file || 'image') + ((im.local||'').match(/\.[a-z]+$/)||[''])[0];
+    var m = ALL[im._mi];
+    lbalb.textContent = (i+1) + ' / ' + allImages.length + '　·　' + (m && m.ts ? fmt(m.ts) : '');
+    lb.classList.add('on');
+  }
+  function closeLb(){ lb.classList.remove('on'); lbi.src=''; }
+  document.getElementById('lbclose').onclick = closeLb;
+  document.getElementById('lbprev').onclick = function(){ openLb(cur-1); };
+  document.getElementById('lbnext').onclick = function(){ openLb(cur+1); };
+  lb.addEventListener('click', function(e){ if(e.target === lb) closeLb(); });
+  onDoc('keydown', function(e){
+    if(!lb.classList.contains('on')) return;
+    if(e.key==='ArrowLeft') openLb(cur-1);
+    if(e.key==='ArrowRight') openLb(cur+1);
+  });
+  chat.addEventListener('click', function(e){
+    var btn = e.target.closest && e.target.closest('.wcard-btn');
+    if(btn){
+      var bub = btn.closest('.bubble');
+      if(bub){
+        var open = bub.classList.toggle('open');
+        btn.textContent = open ? '收起' : '展开详情';
+      }
+      return;
+    }
+    var img = e.target.closest && e.target.closest('img[data-ii]');
+    if(img){ openLb(parseInt(img.dataset.ii,10)); }
+  });
+
+  /* ==========================================================
+     日历热力图（P1-8）
+     ----------------------------------------------------------
+     用已有的按天统计铺成方格：列 = 周（周一起始）、行 = 周一~周日。
+     折线图只能看趋势，看不出「哪段时间聊得密、哪天断档」，方格一眼就看清。
+     点任意格子直接跳到那天。
+     纯本地渲染，不联网。
+     ========================================================== */
+  var hmMetric = 'all';                                   // all | me | peer
+
+  function renderHeat(){
+    var el = document.getElementById('heat');
+    if(!el) return;
+    var D = buildDaily(), n = D.dates.length;
+    if(!n){ el.innerHTML = ''; return; }
+
+    var pick = function(i){
+      if(hmMetric === 'me') return D.me[i];
+      if(hmMetric === 'peer') return D.peer[i];
+      return D.me[i] + D.peer[i];
+    };
+    var vals = [], max = 0;
+    for(var i = 0; i < n; i++){ var v = pick(i); vals.push(v); if(v > max) max = v; }
+
+    // 色阶阈值：按当日峰值分 4 档（0 单独一档）——阈值跟着数据走，换数据集不用改代码
+    var thr = [1, 2, 3, 4];
+    if(max > 0){
+      thr = [Math.max(1, Math.round(max * 0.08)), Math.max(2, Math.round(max * 0.22)),
+             Math.max(3, Math.round(max * 0.45)), Math.max(4, Math.round(max * 0.75))];
+    }
+    var level = function(x){
+      if(!x) return 0;
+      if(x >= thr[3]) return 4;
+      if(x >= thr[2]) return 3;
+      if(x >= thr[1]) return 2;
+      return 1;
+    };
+
+    // 以第一条所在周的周一为第 0 列（dates 是逻辑日 key，取正午求星期）
+    var first = dayNoon(D.dates[0]);
+    var off = (first.getDay() + 6) % 7;                   // 周一 = 0
+    var COL = [], ROW = [];
+    for(var i2 = 0; i2 < n; i2++){
+      var dt = dayNoon(D.dates[i2]);
+      ROW.push((dt.getDay() + 6) % 7);
+      COL.push(Math.floor((i2 + off) / 7));
+    }
+    var weeks = COL[n - 1] + 1;
+    var CS = 11, GAP = 3, padL = 26, padT = 17;
+    var W = padL + weeks * (CS + GAP) + 4;
+    var H = padT + 7 * (CS + GAP) + 3;
+
+    var g = '';
+    // 月份标签：整列的第一条真实日期跨月了就标一次
+    var lastMon = '';
+    for(var c = 0; c < weeks; c++){
+      var cand = '';
+      for(var i3 = 0; i3 < n; i3++){ if(COL[i3] === c){ cand = D.dates[i3]; break; } }
+      if(!cand) continue;
+      var mon = cand.slice(0, 7);
+      if(mon !== lastMon){
+        lastMon = mon;
+        g += '<text x="' + (padL + c * (CS + GAP)) + '" y="11" style="font-size:9.5px;fill:var(--muted)">' +
+             esc(mon.slice(2)) + '</text>';
+      }
+    }
+    // 星期标签（只标周一 / 三 / 五，和 GitHub 一样）
+    ['一', '三', '五'].forEach(function(txt, k){
+      var row = k * 2;
+      g += '<text x="' + (padL - 6) + '" y="' + (padT + row * (CS + GAP) + CS - 2) +
+           '" text-anchor="end" style="font-size:9px;fill:var(--muted)">' + txt + '</text>';
+    });
+    // 方格。注意：SVG 的 presentation attribute 不解析 CSS 变量，颜色一律走 style=""
+    for(var i4 = 0; i4 < n; i4++){
+      var v2 = vals[i4], lv = level(v2);
+      var x = padL + COL[i4] * (CS + GAP), y = padT + ROW[i4] * (CS + GAP);
+      var tip = D.dates[i4] + '　我 ' + D.me[i4] + ' 条 · TA ' + D.peer[i4] + ' 条' +
+                (v2 ? '' : '（这天没有消息）');
+      g += '<rect class="c" x="' + x + '" y="' + y + '" width="' + CS + '" height="' + CS +
+           '" rx="2.5" data-day="' + esc(D.dates[i4]) + '" style="fill:var(--hm' + lv + ')">' +
+           '<title>' + esc(tip) + '</title></rect>';
+    }
+    el.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    el.setAttribute('width', W);
+    el.setAttribute('height', H);
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', '日历热力图：' + D.dates[0] + ' 至 ' + D.dates[n - 1] + '，共 ' + n + ' 天');
+    el.innerHTML = g;
+
+    var leg = document.getElementById('hmLeg');
+    if(leg){
+      leg.innerHTML = '<span>少</span>' +
+        [0, 1, 2, 3, 4].map(function(k){ return '<i style="background:var(--hm' + k + ')"></i>'; }).join('') +
+        '<span>多</span><span class="sp"></span>' +
+        '<span>共 ' + n.toLocaleString() + ' 天 · 单日峰值 ' + max.toLocaleString() + ' 条</span>';
+    }
+  }
+
+  (function bindHeat(){
+    var el = document.getElementById('heat');
+    if(el){
+      el.onclick = function(e){
+        var t = e.target;
+        var day = t && t.getAttribute ? t.getAttribute('data-day') : null;
+        if(day) jumpToDate(day);
+      };
+    }
+    var seg = document.getElementById('hmSeg');
+    if(seg){
+      Array.prototype.forEach.call(seg.querySelectorAll('button'), function(b){
+        b.onclick = function(){
+          Array.prototype.forEach.call(seg.querySelectorAll('button'), function(x){
+            x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+          });
+          hmMetric = b.dataset.hm || 'all';
+          renderHeat();
+        };
+      });
+    }
+  })();
+
+  /* ==========================================================
+     聊天节律（P2-11）
+     ----------------------------------------------------------
+     口径与统计面板一致（排除自动回复 / 系统通知 / 非双方消息），全部现算：
+       · 谁先开口：按时间排序后，间隔超过 30 分钟就算「新一轮」，
+         该轮第一条是谁发的就记谁先开口。
+       · 回复时延：相邻两条若是「一方 → 另一方」就记一次等待；
+         超过 12 小时的不计入（那是隔天了，会把中位数拉得没有意义）。
+       · 24 小时 / 星期分布：按**本机时区**取，双方分开统计。
+         ⚠ 两处口径不同源：**小时**用真实钟点（03:00 就是 03:00），
+         **星期**用「每天 05:00 分界」后的逻辑日 —— 后者必须与分隔条一致，
+         否则周三 02:00 的消息会被算成周三、却挂在「周二」那条分隔条下面。同上，
+         回复时延只用来判断「隔不隔天」的 12 小时阈值不受影响（那是纯时间差）。
+     ========================================================== */
+  var RHY = null;
+  var GAP_NEW = 30 * 60 * 1000;
+  var GAP_MAX = 12 * 60 * 60 * 1000;
+  var WEEK_CN = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+  function buildRhythm(){
+    if(RHY) return RHY;
+    var base = [];
+    ALL.forEach(function(m){
+      if(!m.ts) return;
+      if(msgKind(m) !== 'count') return;
+      if(m.from !== 'me' && m.from !== 'peer') return;
+      base.push(m);
+    });
+    base.sort(function(a, b){ return a.ts - b.ts; });
+
+    var openMe = 0, openPeer = 0;
+    var lat = { m2p: [], p2m: [] };
+    var hourMe = new Array(24).fill(0), hourPeer = new Array(24).fill(0);
+    var dowMe = new Array(7).fill(0), dowPeer = new Array(7).fill(0);
+
+    for(var i = 0; i < base.length; i++){
+      var m = base[i], d = new Date(m.ts);
+      /* 小时用**真实钟点**（d.getHours()），星期用**逻辑日**的星期：
+         00:00~05:00 那种消息，钟点是它自己的，但「算哪一天」必须和分隔条一致，
+         否则同一个面板里两处口径打架（周三 02:00 会被算成周三，可它挂在周二下面）。 */
+      var h = d.getHours(), w = (dayDate(m.ts).getDay() + 6) % 7;
+      if(m.from === 'me'){ hourMe[h]++; dowMe[w]++; } else { hourPeer[h]++; dowPeer[w]++; }
+
+      if(i === 0 || (m.ts - base[i - 1].ts) > GAP_NEW){
+        if(m.from === 'me') openMe++; else openPeer++;
+      }
+      if(i > 0 && base[i - 1].from !== m.from){
+        var dt = m.ts - base[i - 1].ts;
+        if(dt > 0 && dt <= GAP_MAX){
+          if(m.from === 'me') lat.m2p.push(dt); else lat.p2m.push(dt);
+        }
+      }
+    }
+
+    var median = function(a){
+      if(!a.length) return null;
+      var s = a.slice().sort(function(x, y){ return x - y; });
+      var k = Math.floor(s.length / 2);
+      return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2;
+    };
+    var mean = function(a){
+      return a.length ? a.reduce(function(x, y){ return x + y; }, 0) / a.length : null;
+    };
+
+    RHY = {
+      n: base.length,
+      openMe: openMe, openPeer: openPeer,
+      m2p: { n: lat.m2p.length, med: median(lat.m2p), avg: mean(lat.m2p) },
+      p2m: { n: lat.p2m.length, med: median(lat.p2m), avg: mean(lat.p2m) },
+      hourMe: hourMe, hourPeer: hourPeer, dowMe: dowMe, dowPeer: dowPeer,
+    };
+    return RHY;
+  }
+
+  function fmtDur(ms){
+    if(ms == null) return '—';
+    var s = ms / 1000;
+    if(s < 60) return Math.round(s) + ' 秒';
+    var min = s / 60;
+    if(min < 60) return (min < 10 ? min.toFixed(1) : Math.round(min)) + ' 分钟';
+    var h = min / 60;
+    if(h < 24) return (h < 10 ? h.toFixed(1) : Math.round(h)) + ' 小时';
+    return (h / 24).toFixed(1) + ' 天';
+  }
+
+  function renderRhythm(){
+    var el = document.getElementById('rhythm');
+    if(!el) return;
+    var R = buildRhythm();
+    if(!R.n){
+      el.innerHTML = '<div class="rhbox"><div class="sub">没有可用于统计的消息</div></div>';
+      return;
+    }
+
+    var pct = function(a, b){ return b ? Math.round(a / b * 100) : 0; };
+    function grouped(a1, a2, labels){
+      var mx = 1;
+      a1.forEach(function(v){ if(v > mx) mx = v; });
+      a2.forEach(function(v){ if(v > mx) mx = v; });
+      var bars = '';
+      for(var i = 0; i < a1.length; i++){
+        bars += '<span style="height:' + (a1[i] ? Math.max(2, Math.round(a1[i] / mx * 100)) : 0) + '%"></span>';
+        bars += '<span class="p" style="height:' + (a2[i] ? Math.max(2, Math.round(a2[i] / mx * 100)) : 0) + '%"></span>';
+      }
+      return { bars: bars, axis: labels.map(function(s){ return '<span>' + s + '</span>'; }).join('') };
+    }
+
+    var hourLabels = [];
+    for(var i = 0; i < 24; i++) hourLabels.push(i % 6 === 0 ? String(i) : '');
+    var h24 = grouped(R.hourMe, R.hourPeer, hourLabels);
+    var d7 = grouped(R.dowMe, R.dowPeer, WEEK_CN.map(function(s){ return s.slice(1); }));
+
+    var peakH = 0, peakV = -1;
+    for(var k = 0; k < 24; k++){ var v = R.hourMe[k] + R.hourPeer[k]; if(v > peakV){ peakV = v; peakH = k; } }
+    var peakD = 0, peakDV = -1;
+    for(var k2 = 0; k2 < 7; k2++){ var v2 = R.dowMe[k2] + R.dowPeer[k2]; if(v2 > peakDV){ peakDV = v2; peakD = k2; } }
+
+    var openTot = R.openMe + R.openPeer;
+    var lg = '<div class="rhlg"><span><i style="background:var(--c-me)"></i>我发出</span>' +
+             '<span><i style="background:var(--c-peer)"></i>TA 回复</span></div>';
+
+    el.innerHTML =
+      '<div class="rhbox">' +
+        '<h4>谁先开口</h4>' +
+        '<div class="big">' + pct(R.openMe, openTot) + '<i>% 是我先说话</i></div>' +
+        '<div class="sub">把对话按「间隔超过 30 分钟」切成 <b>' + openTot.toLocaleString() + '</b> 轮：' +
+          '我开了 <b>' + R.openMe.toLocaleString() + '</b> 轮，TA 开了 <b>' + R.openPeer.toLocaleString() + '</b> 轮</div>' +
+      '</div>' +
+      '<div class="rhbox">' +
+        '<h4>回复时延</h4>' +
+        '<div class="big">' + fmtDur(R.p2m.med) + '<i>中位数 · TA 回我</i></div>' +
+        '<div class="sub">平均 ' + fmtDur(R.p2m.avg) + '，样本 ' + R.p2m.n.toLocaleString() + ' 次<br>' +
+          '我回 TA：中位 ' + fmtDur(R.m2p.med) + '，平均 ' + fmtDur(R.m2p.avg) +
+          '，样本 ' + R.m2p.n.toLocaleString() + ' 次<br>' +
+          '超过 12 小时的等待不计入（那多半是隔天了）</div>' +
+      '</div>' +
+      '<div class="rhbox">' +
+        '<h4>一天里什么时候最活跃</h4>' +
+        '<div class="big">' + peakH + ':00<i>~ ' + (peakH + 1) + ':00 · 合计 ' +
+          (peakV < 0 ? 0 : peakV).toLocaleString() + ' 条</i></div>' +
+        '<div class="rhbars">' + h24.bars + '</div>' +
+        '<div class="rhaxis">' + h24.axis + '</div>' + lg +
+      '</div>' +
+      '<div class="rhbox">' +
+        '<h4>一周里哪天最活跃</h4>' +
+        '<div class="big">' + WEEK_CN[peakD] + '<i>合计 ' + (peakDV < 0 ? 0 : peakDV).toLocaleString() + ' 条</i></div>' +
+        '<div class="rhbars">' + d7.bars + '</div>' +
+        '<div class="rhaxis">' + d7.axis + '</div>' + lg +
+      '</div>';
+  }
+
+  /* ==========================================================
+     高频词云（P2-12）
+     ----------------------------------------------------------
+     中文没有空格，这里用「2 字 + 3 字滑窗」统计，再把被更长词覆盖掉的
+     子串删掉（例：「角色名+直」的出现次数和「角色名」差不多 → 只留更长的那个），
+     英文 / 数字按整词统计。不引入任何分词库，纯本地。
+     ========================================================== */
+  var WC = { ocr: false, stop: true, only: '' };
+  var WCD = null;
+
+  var STOP_WORDS = (function(){
+    var raw = '的 了 是 在 我 你 他 她 它 们 这 那 有 和 与 就 都 也 还 但 而 及 或 把 被 给 让 对 从 到 上 下 里 外 中 前 后 个 只 件 些 什么 怎么 为什么 因为 所以 但是 如果 可以 可能 应该 觉得 感觉 知道 现在 今天 明天 昨天 时候 一下 一个 这个 那个 哪个 我们 你们 他们 自己 就是 不是 没有 真的 好的 可以 这样 那样 是不是 有没有 起来 出来 过来 的话 一样 不是 不错 有点 一点 很多 这么 那么 然后 而且 或者 不过 其实 只是 还是 已经 一直 一定 一次 一天 大家 时候 什么 干什';
+    var s = {};
+    raw.split(/\s+/).forEach(function(w){ if(w) s[w] = 1; });
+    [PEER_LABEL, SELF_LABEL, '分享图片', '分享视频', '分享语音', '自定义表情',
+     '你撤回了一条消息', '对方撤回了一条消息'].forEach(function(w){ s[w] = 1; });
+    return s;
+  })();
+
+  function wcTokens(text){
+    var t = String(text || '')
+      .replace(/https?:\/\/\S+/g, ' ')          // 链接不参与词频
+      .replace(/\[[^\[\]\s]{1,24}\]/g, ' ')     // 表情记号 [tv_doge]
+      .replace(/&[a-z]+;/gi, ' ');
+    var out = [], m;
+    var reCJK = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+/g;
+    while((m = reCJK.exec(t))){
+      var s = m[0];
+      for(var n = 2; n <= 3; n++){
+        for(var i = 0; i + n <= s.length; i++) out.push(s.substr(i, n));
+      }
+    }
+    var reWord = /[A-Za-z][A-Za-z0-9_'\-]{1,23}|\d{2,8}/g;
+    while((m = reWord.exec(t))) out.push(m[0].toLowerCase());
+    return out;
+  }
+
+  function buildWords(){
+    if(WCD) return WCD;
+    var all = {}, me = {}, peer = {}, total = 0;
+    var bump = function(map, k){ map[k] = (map[k] || 0) + 1; };
+
+    ALL.forEach(function(m){
+      if(msgKind(m) !== 'count') return;
+      if(m.from !== 'me' && m.from !== 'peer') return;
+      if(WC.only && m.from !== WC.only) return;
+      var text = m.text || '';
+      if(WC.ocr && m._ocr) text += ' ' + m._ocr;
+      if(!text) return;
+      total++;
+      var toks = wcTokens(text), seen = {};
+      for(var i = 0; i < toks.length; i++){
+        var w = toks[i];
+        if(WC.stop && STOP_WORDS[w]) continue;
+        bump(all, w);
+        if(!seen[w]){ seen[w] = 1; if(m.from === 'me') bump(me, w); else bump(peer, w); }
+      }
+    });
+
+    // 先按词频取候选池，再在池内做子串抑制
+    // （全量两两比对是 O(n²)，实测候选词可达十万级，会卡死页面）
+    var ranked = Object.keys(all).sort(function(a, b){ return all[b] - all[a]; });
+    var pool = ranked.slice(0, 600);
+    var kill = {};
+    pool.forEach(function(L){
+      if(L.length !== 3) return;
+      [L.slice(0, 2), L.slice(1, 3)].forEach(function(w){
+        if(all[w] && all[L] >= all[w] * 0.6) kill[w] = 1;
+      });
+    });
+
+    var list = pool.filter(function(w){ return !kill[w] && all[w] >= 2; })
+      .slice(0, 80)
+      .map(function(w){ return { w: w, n: all[w], me: me[w] || 0, peer: peer[w] || 0 }; });
+
+    WCD = { list: list, total: total, kinds: ranked.length };
+    return WCD;
+  }
+
+  function renderWords(){
+    var el = document.getElementById('wc'), meta = document.getElementById('wcMeta');
+    if(!el) return;
+    var D = buildWords();
+    if(!D.list.length){
+      el.innerHTML = '<span style="color:var(--muted);font-size:12px">没有统计到高频词</span>';
+      if(meta) meta.textContent = '';
+      return;
+    }
+    var maxN = D.list[0].n, minN = D.list[D.list.length - 1].n;
+    var spanN = Math.max(1, maxN - minN);
+    el.innerHTML = D.list.map(function(o){
+      var t = (o.n - minN) / spanN;
+      var fs = 12 + Math.round(t * 24);
+      var who = (o.me === o.peer) ? 'both' : (o.me > o.peer ? 'me' : 'peer');
+      var col = who === 'me' ? 'var(--c-me)' : (who === 'peer' ? 'var(--c-peer)' : 'var(--text)');
+      var op = (0.6 + t * 0.4).toFixed(2);
+      var tip = o.w + '：共 ' + o.n + ' 次（我 ' + o.me + ' · TA ' + o.peer + '）';
+      return '<b title="' + esc(tip) + '" style="font-size:' + fs + 'px;color:' + col + ';opacity:' + op + '">' +
+             esc(o.w) + '<small>' + o.n + '</small></b>';
+    }).join('');
+
+    if(meta){
+      meta.innerHTML = '统计范围：' + D.total.toLocaleString() + ' 条真实发言 · ' +
+        D.kinds.toLocaleString() + ' 个候选词' +
+        (WC.only ? '　·　只看' + (WC.only === 'me' ? '我发的' : 'TA 发的') : '') +
+        (WC.ocr ? '　·　已含图内文字' : '') +
+        (WC.stop ? '　·　已过滤虚词' : '') +
+        '　·　中文按 2~3 字滑窗统计（没引分词库，纯本地）';
+    }
+  }
+
+  function refreshWords(){ WCD = null; renderWords(); }
+
+  (function bindWordControls(){
+    [['wcOcr', 'ocr'], ['wcStop', 'stop']].forEach(function(pair){
+      var el = document.getElementById(pair[0]);
+      if(!el) return;
+      el.onclick = function(){
+        WC[pair[1]] = !WC[pair[1]];
+        el.setAttribute('aria-pressed', WC[pair[1]] ? 'true' : 'false');
+        refreshWords();
+      };
+    });
+    [['wcMine', 'me'], ['wcPeer', 'peer']].forEach(function(pair){
+      var el = document.getElementById(pair[0]);
+      if(!el) return;
+      el.onclick = function(){
+        WC.only = (WC.only === pair[1]) ? '' : pair[1];
+        document.getElementById('wcMine').setAttribute('aria-pressed', WC.only === 'me' ? 'true' : 'false');
+        document.getElementById('wcPeer').setAttribute('aria-pressed', WC.only === 'peer' ? 'true' : 'false');
+        refreshWords();
+      };
+    });
+  })();
+
+  /* ==========================================================
+     导出（P1-7）· 敏感信息打码（P2-14）
+     ----------------------------------------------------------
+     ⚠ 全部在**浏览器里本地生成文件并下载**：
+       不上传任何内容、不联网、不依赖任何云服务。
+     说明：
+       · HTML 导出里的图片用**相对路径**引用。file:// 下浏览器禁止 JS
+         读取本地图片做内联（会被 CORS 拦），所以请把导出的 HTML
+         保存到本项目目录下再打开，图片就能正常显示。
+       · 打码是「尽力而为」：规则命中数会在导出后如实报给你，
+         地址这类非结构化内容只能做启发式识别。
+       · 加密用 WebCrypto 的 AES-GCM 256 + PBKDF2(SHA-256, 20 万次迭代)。
+         加密包只能由**本页面**导入解密。
+     ========================================================== */
+  /* 纯数字的三条规则必须带「数字边界」(?<!\d) / (?!\d)，否则会互相踩
+     （2026-09-16 实测）：
+       · /\d{17}[\dXx]/ 会从 19 位银行卡里咬走前 18 位 → 卡号被标成「身份证」，尾数裸奔
+       · /1[3-9]\d{9}/  会从 18 位身份证中间咬走 11 位 → 身份证被标成「手机号」
+     加上边界后，每条规则只认「独立成串」的那一段：
+       19 位数字 → 银行卡 · 18 位(<数字>|X) → 身份证 · 11 位 1[3-9] 开头 → 手机号。
+     scripts/msg_kind.mjs 里有一份逐条对应的，改这里必须同步改那边。 */
+  var MASK_RULES = [
+    { k: '手机号',   re: /(?<!\d)1[3-9]\d{9}(?!\d)/g, to: '[手机号已打码]' },
+    { k: '邮箱',     re: /[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g, to: '[邮箱已打码]' },
+    { k: '身份证',   re: /(?<!\d)\d{17}[\dXx](?!\d)/g, to: '[身份证已打码]' },
+    // 银行卡取「16 位以上」：位数上限卡死会让 20 位以上的长数字串一条规则都不命中
+    // （边界要求独立成串，超长串切不出 16~19 位）→ 反而漏掉不打码。
+    { k: '银行卡',   re: /(?<!\d)\d{16,}(?!\d)/g, to: '[银行卡已打码]' },
+    { k: '账号',     re: /(?:QQ|qq|微信|vx|VX|Vx|v信|wechat|WeChat)\s*[:：]?\s*[A-Za-z0-9_\-]{5,20}/g, to: '[账号已打码]' },
+    { k: '收货地址', re: /[\u4e00-\u9fa5]{2,8}(?:省|市)[\u4e00-\u9fa5]{1,8}(?:区|县|市)[\u4e00-\u9fa5]{1,12}(?:路|街|道|巷|小区|大厦|楼)[0-9A-Za-z\-]{0,10}号?/g, to: '[地址已打码]' },
+  ];
+  var maskHits = {};
+
+  function maskText(s){
+    var out = String(s == null ? '' : s);
+    MASK_RULES.forEach(function(r){
+      out = out.replace(r.re, function(){ maskHits[r.k] = (maskHits[r.k] || 0) + 1; return r.to; });
+    });
+    return out;
+  }
+
+  function expScopeRows(){
+    var sc = document.getElementById('expScope');
+    return (sc && sc.value === 'all') ? ALL : st.list;
+  }
+
+  function updateExpCnt(){
+    var el = document.getElementById('expCnt');
+    if(!el) return;
+    var n = expScopeRows().length;
+    el.hidden = false;
+    el.textContent = n.toLocaleString();
+  }
+
+  function expWho(m){
+    if(m.from === 'me') return '我';
+    return META.peer_name || 'TA';
+  }
+
+  /* 把一条消息压成一行可读文字（含卡片、链接、撤回标记、图片索引） */
+  function expLine(m, opts){
+    var o = opts || {};
+    var T = o.T || function(x){ return String(x == null ? '' : x); };
+    var t = m.text || '';
+    if(m.card){
+      var ct = [];
+      if(m.card.author) ct.push('@' + m.card.author);
+      if(m.card.title) ct.push(m.card.title);
+      if(m.card.text && String(m.card.text).trim() !== String(m.card.title || '').trim()) ct.push(m.card.text);
+      if(ct.length) t = (t ? t + ' ' : '') + '[' + (m.card.sub || '卡片') + '] ' + ct.join(' · ');
+    }
+    (m.links || []).forEach(function(l){
+      var u = l.long || l.short || '';
+      if(u && t.indexOf(u) < 0 && (!l.short || t.indexOf(l.short) < 0)) t += ' ' + u;
+    });
+    if(m.recalled) t = '（已撤回）' + (t || '');
+    t = T(t).trim();
+    if(o.notes === false) return t;
+    var notes = [];
+    (m.images || []).forEach(function(im){
+      if(im._ocrt) notes.push('［图内文字］' + T(im._ocrt));
+      if(im._vlmt) notes.push('［图片描述］' + T(im._vlmt));
+    });
+    return notes.length ? (t ? t + '\n' : '') + notes.join('\n') : t;
+  }
+
+  function expImageList(m){
+    return (m.images || []).map(function(im){ return im.local || im.url || ''; }).filter(Boolean);
+  }
+
+  function expMetaHeader(){
+    var rows = expScopeRows();
+    var t0 = rows.length ? rows[0].ts : 0, t1 = rows.length ? rows[rows.length - 1].ts : 0;
+    return {
+      source: SRC.key, label: SRC.label,
+      peer_name: META.peer_name || '', self_name: META.self_name || '',
+      count: rows.length,
+      first: t0 ? fmtD(t0) : '', last: t1 ? fmtD(t1) : '',
+      exported_at: new Date().toISOString(),
+    };
+  }
+
+  function buildTxt(rows, o){
+    var H = expMetaHeader();
+    var out = [];
+    out.push('# ' + SRC.title + ' · 导出');
+    out.push('# 来源：' + H.label + '（' + H.source + '）');
+    out.push('# 范围：' + H.first + ' ~ ' + H.last + '，共 ' + H.count.toLocaleString() + ' 条');
+    out.push('# 导出时间：' + H.exported_at + '　敏感信息打码：' + (o.masked ? '是' : '否'));
+    out.push('# 本地离线生成，未上传任何内容');
+    out.push('');
+    rows.forEach(function(m){
+      var ts = m.ts ? fmt(m.ts) : '时间未知';
+      out.push('[' + ts + '] ' + expWho(m) + ': ' + expLine(m, o).replace(/\n/g, '\n    '));
+      expImageList(m).forEach(function(p){ out.push('    <图片> ' + p); });
+    });
+    return out.join('\n') + '\n';
+  }
+
+  function buildMd(rows, o){
+    var H = expMetaHeader();
+    var out = ['# ' + SRC.title + ' · 导出', '',
+      '- 来源：' + H.label + '（`' + H.source + '`）',
+      '- 范围：' + H.first + ' ~ ' + H.last + '，共 **' + H.count.toLocaleString() + '** 条',
+      '- 导出时间：' + H.exported_at,
+      '- 敏感信息打码：' + (o.masked ? '是' : '否'),
+      '- 由本地离线查看页生成，未上传任何内容', '', '---', ''];
+    rows.forEach(function(m){
+      out.push('**' + (m.ts ? fmt(m.ts) : '时间未知') + ' · ' + expWho(m) + '**', '');
+      var body = expLine(m, o);
+      if(body) out.push(body.replace(/^/gm, ''), '');
+      expImageList(m).forEach(function(p){ out.push('![](' + p + ')', ''); });
+    });
+    return out.join('\n');
+  }
+
+  function buildHtml(rows, o){
+    var H = expMetaHeader();
+    var parts = [];
+    parts.push('<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="utf-8">');
+    parts.push('<meta name="viewport" content="width=device-width,initial-scale=1">');
+    parts.push('<title>' + esc(SRC.title) + ' · 导出</title>\n<style>');
+    parts.push('body{margin:0;background:#f4f6f9;color:#1f2329;font:14px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}');
+    parts.push('.wrap{max-width:900px;margin:0 auto;padding:26px 18px 60px}');
+    parts.push('h1{font-size:19px;margin:0 0 6px}');
+    parts.push('.hd{background:#fff;border:1px solid #e6e9ee;border-radius:12px;padding:12px 15px;font-size:12.5px;color:#5b6472;line-height:1.85;margin-bottom:16px}');
+    parts.push('.m{margin:0 0 13px;display:flex;flex-direction:column;gap:3px}');
+    parts.push('.m .who{font-size:11.5px;color:#8b939c}');
+    parts.push('.m .b{max-width:78%;padding:8px 12px;border-radius:12px;background:#fff;border:1px solid #e6e9ee;white-space:pre-wrap;word-break:break-word}');
+    parts.push('.m.me{align-items:flex-end}.m.me .b{background:linear-gradient(135deg,#4f7cff,#7b5cff);color:#fff;border-color:transparent}');
+    parts.push('.m img{max-width:min(78%,420px);border-radius:10px;border:1px solid #e6e9ee;display:block;margin-top:4px}');
+    parts.push('.note{font-size:11.5px;color:#8b939c;margin-top:3px;white-space:pre-wrap}');
+    parts.push('</style>\n</head>\n<body>\n<div class="wrap">');
+    parts.push('<h1>' + esc(SRC.title) + ' · 导出</h1>');
+    parts.push('<div class="hd">来源：' + esc(H.label) + '（' + esc(H.source) + '）<br>范围：' +
+      esc(H.first) + ' ~ ' + esc(H.last) + '，共 ' + H.count.toLocaleString() + ' 条<br>导出时间：' +
+      esc(H.exported_at) + '　敏感信息打码：' + (o.masked ? '是' : '否') +
+      '<br>⚠ 图片用相对路径引用，请把本文件保存到项目目录下再打开，否则图片不显示。</div>');
+
+    rows.forEach(function(m){
+      var isMe = m.from === 'me';
+      var body = expLine(m, o);
+      var notes = expLine(m, { T: o.T, withNotes: true });
+      notes = notes && body && notes.indexOf(body) === 0 ? notes.slice(body.length).trim() : (body ? '' : notes);
+      parts.push('<div class="m' + (isMe ? ' me' : '') + '">');
+      parts.push('<div class="who">' + (m.ts ? esc(fmt(m.ts)) : '时间未知') + ' · ' + esc(expWho(m)) + '</div>');
+      if(body) parts.push('<div class="b">' + esc(body) + '</div>');
+      if(notes) parts.push('<div class="note">' + esc(notes) + '</div>');
+      expImageList(m).forEach(function(p){
+        parts.push('<img src="' + esc(p) + '" alt="图片" loading="lazy">');
+      });
+      parts.push('</div>');
+    });
+    parts.push('</div>\n</body>\n</html>');
+    return parts.join('\n');
+  }
+
+  function buildJson(rows, o){
+    var clean = rows.map(function(m){
+      var x = {
+        id: m.id, ts: m.ts, time: m.time, day: m.ts ? dayKey(m.ts) : '',
+        from: m.from, sender: o.T(m.sender), type: m.type, media_type: m.media_type,
+        recalled: !!m.recalled, text: o.T(m.text || ''),
+      };
+      if(m.msg_source !== undefined) x.msg_source = m.msg_source;
+      if(m.seqno !== undefined) x.seqno = m.seqno;
+      if(m.card) x.card = {
+        kind: m.card.kind, sub: m.card.sub || '', author: o.T(m.card.author || ''),
+        title: o.T(m.card.title || ''), text: o.T(m.card.text || ''),
+        url: m.card.url || '', bvid: m.card.bvid || '',
+      };
+      if((m.links || []).length) x.links = m.links.map(function(l){
+        return { short: l.short || '', long: l.long || '', title: o.T(l.title || '') };
+      });
+      if((m.images || []).length) x.images = m.images.map(function(im){
+        return {
+          kind: im.kind, local: im.local || '', url: im.url || '',
+          ocr_text: o.T(im._ocrt || ''), vlm_text: o.T(im._vlmt || ''),
+        };
+      });
+      return x;
+    });
+    return JSON.stringify({ _meta: expMetaHeader(), messages: clean }, null, 2) + '\n';
+  }
+
+  function buildJsonl(rows, o){
+    return rows.map(function(m){
+      return JSON.stringify({
+        id: m.id, ts: m.ts, iso: m.time, day: m.ts ? dayKey(m.ts) : '',
+        from: m.from, who: expWho(m), sender: o.T(m.sender),
+        type: m.type, media_type: m.media_type, recalled: !!m.recalled,
+        text: o.T(m.text || ''),
+        ocr_text: (m.images || []).map(function(im){ return o.T(im._ocrt || ''); }).filter(Boolean),
+        vlm_text: (m.images || []).map(function(im){ return o.T(im._vlmt || ''); }).filter(Boolean),
+        card: m.card ? { sub: m.card.sub || '', author: o.T(m.card.author || ''),
+                         title: o.T(m.card.title || ''), text: o.T(m.card.text || ''),
+                         url: m.card.url || '' } : null,
+        images: expImageList(m),
+      });
+    }).join('\n') + '\n';
+  }
+
+  function csvCell(v){
+    var s = String(v == null ? '' : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function buildCsv(rows, o){
+    var out = ['时间,谁,类型,含图片,图片数,撤回,正文'];
+    rows.forEach(function(m){
+      out.push([
+        m.ts ? fmt(m.ts) : '', expWho(m), m.type || '',
+        (m.images || []).length ? '是' : '否', (m.images || []).length,
+        m.recalled ? '是' : '否',
+        expLine(m, o).replace(/\n/g, ' ⏎ '),
+      ].map(csvCell).join(','));
+    });
+    return '\ufeff' + out.join('\r\n') + '\r\n';   // 带 BOM，Excel 打开不乱码
+  }
+
+  function saveBlob(name, text, mime){
+    var blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); if(a.parentNode) a.parentNode.removeChild(a); }, 5000);
+  }
+
+  function expStamp(){
+    var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; };
+    return String(d.getFullYear()) + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+  }
+
+  function expMsg(html, cls){
+    var el = document.getElementById('expMsg');
+    if(!el) return;
+    el.hidden = false;
+    el.className = 'expmsg' + (cls ? ' ' + cls : '');
+    el.innerHTML = html;
+  }
+
+  /* 生成指定格式的导出文本；返回 {text, name, mime} */
+  function makeExport(fmt){
+    var rows = expScopeRows();
+    var masked = document.getElementById('expMask').getAttribute('aria-pressed') === 'true';
+    maskHits = {};
+    var opt = { masked: masked, T: masked ? maskText : function(x){ return String(x == null ? '' : x); } };
+    var stamp = expStamp(), base = SRC.key + '-私信导出-' + stamp;
+    var r;
+    if(fmt === 'html')   r = { text: buildHtml(rows, opt), name: base + '.html', mime: 'text/html' };
+    else if(fmt === 'md') {
+      r = { text: buildMd(rows, opt), name: base + '.md', mime: 'text/markdown' };
+      opt.withNotes = true;
+    }
+    else if(fmt === 'txt') r = { text: buildTxt(rows, opt), name: base + '.txt', mime: 'text/plain' };
+    else if(fmt === 'json') r = { text: buildJson(rows, opt), name: base + '.json', mime: 'application/json' };
+    else if(fmt === 'jsonl') r = { text: buildJsonl(rows, opt), name: base + '.jsonl', mime: 'application/x-ndjson' };
+    else if(fmt === 'csv') r = { text: buildCsv(rows, opt), name: base + '.csv', mime: 'text/csv' };
+    else throw new Error('未知导出格式：' + fmt);
+    r.rows = rows.length;
+    r.masked = masked;
+    return r;
+  }
+
+  function maskSummary(){
+    var ks = Object.keys(maskHits);
+    if(!ks.length) return '未命中任何敏感信息规则';
+    return '打码命中：' + ks.map(function(k){ return k + ' ' + maskHits[k]; }).join(' · ');
+  }
+
+  /* ---------- 加密（WebCrypto：PBKDF2-SHA256 20 万次 → AES-GCM 256）---------- */
+  function b64(buf){
+    var b = new Uint8Array(buf), s = '';
+    for(var i = 0; i < b.length; i += 0x8000){
+      s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    }
+    return btoa(s);
+  }
+  function unb64(str){
+    var s = atob(String(str || '')), b = new Uint8Array(s.length);
+    for(var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+    return b;
+  }
+  function subtleOK(){
+    return !!(window.crypto && window.crypto.subtle && window.crypto.subtle.importKey && window.TextEncoder);
+  }
+  function deriveKey(pwd, salt, iter){
+    var enc = new TextEncoder();
+    return crypto.subtle.importKey('raw', enc.encode(String(pwd)), { name: 'PBKDF2' }, false, ['deriveKey'])
+      .then(function(base){
+        return crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+          base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      });
+  }
+  function encryptText(pwd, plain, name){
+    var iter = 200000;
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    return deriveKey(pwd, salt, iter).then(function(key){
+      return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key,
+                                   new TextEncoder().encode(plain));
+    }).then(function(ct){
+      return JSON.stringify({
+        _fmt: 'dm-backup-encrypted', v: 1,
+        kdf: 'PBKDF2-SHA256', iter: iter, cipher: 'AES-GCM-256',
+        salt: b64(salt), iv: b64(iv), ct: b64(ct),
+        name: name || '', created_at: new Date().toISOString(),
+      }, null, 2);
+    });
+  }
+  function decryptText(pwd, envelope){
+    var o;
+    try{ o = JSON.parse(envelope); }
+    catch(e){ return Promise.reject(new Error('文件不是合法的加密包（JSON 解析失败）')); }
+    if(!o || o._fmt !== 'dm-backup-encrypted'){
+      return Promise.reject(new Error('不是本工具生成的加密包（缺少 _fmt 标记）'));
+    }
+    var salt = unb64(o.salt), iv = unb64(o.iv), ct = unb64(o.ct);
+    return deriveKey(pwd, salt, o.iter || 200000).then(function(key){
+      return crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ct);
+    }).then(function(pt){
+      return { text: new TextDecoder().decode(pt), name: o.name || '解密结果.json' };
+    }, function(){
+      throw new Error('口令不对，或文件已损坏');
+    });
+  }
+
+  /* ---------- 导出相关的交互 ---------- */
+  (function bindExport(){
+    var scope = document.getElementById('expScope');
+    if(scope) scope.onchange = updateExpCnt;
+
+    var mask = document.getElementById('expMask');
+    if(mask){
+      mask.onclick = function(){
+        var on = mask.getAttribute('aria-pressed') !== 'true';
+        mask.setAttribute('aria-pressed', on ? 'true' : 'false');
+      };
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.expgrid button[data-exp]'), function(b){
+      b.onclick = function(){
+        var fmt = b.dataset.exp;
+        try{
+          var r = makeExport(fmt);
+          if(!r.rows){ expMsg('当前范围里没有消息，没东西可导。', 'bad'); return; }
+          saveBlob(r.name, r.text, r.mime);
+          expMsg('已导出 <b>' + esc(r.name) + '</b>（' + r.rows.toLocaleString() + ' 条 · ' +
+                 (r.text.length / 1024).toFixed(0) + ' KB）<br>' +
+                 (r.masked ? maskSummary() + '<br>' : '') +
+                 (fmt === 'html' ? '请把文件保存到项目目录下再打开，图片才显示。' : ''), 'ok');
+        }catch(e){
+          expMsg('导出失败：' + esc(e && e.message ? e.message : e), 'bad');
+        }
+      };
+    });
+
+    var enc = document.getElementById('expEnc');
+    if(enc) enc.onclick = function(){
+      var pwd = (document.getElementById('expPwd').value || '').trim();
+      if(pwd.length < 4){ expMsg('口令至少 4 位。', 'bad'); return; }
+      if(!subtleOK()){ expMsg('当前环境不支持 WebCrypto，无法加密导出。', 'bad'); return; }
+      try{
+        var r = makeExport('json');
+        if(!r.rows){ expMsg('当前范围里没有消息。', 'bad'); return; }
+        enc.disabled = true;
+        encryptText(pwd, r.text, r.name).then(function(env2){
+          saveBlob(r.name.replace(/\.json$/, '') + '.enc.json', env2, 'application/json');
+          expMsg('已加密导出 <b>' + esc(r.name.replace(/\.json$/, '.enc.json')) + '</b>' +
+                 '（' + r.rows.toLocaleString() + ' 条 · AES-GCM 256）<br>' +
+                 '这个文件只能在本页面用「导入解密」还原，别忘了口令。', 'ok');
+        }).catch(function(e){
+          expMsg('加密失败：' + esc(e && e.message ? e.message : e), 'bad');
+        }).then(function(){ enc.disabled = false; });
+      }catch(e){
+        expMsg('加密失败：' + esc(e && e.message ? e.message : e), 'bad');
+      }
+    };
+
+    var impBtn = document.getElementById('expImpBtn'), imp = document.getElementById('expImp');
+    if(impBtn && imp) impBtn.onclick = function(){ imp.click(); };
+    if(imp) imp.onchange = function(){
+      var f = imp.files && imp.files[0];
+      if(!f) return;
+      f.text().then(function(env2){
+        if(!subtleOK()) throw new Error('当前环境不支持 WebCrypto，无法解密');
+        var pwd = (document.getElementById('expPwd').value || '').trim();
+        if(!pwd) pwd = window.prompt('输入这个加密包的口令：') || '';
+        if(!pwd) throw new Error('没有输入口令');
+        return decryptText(pwd, env2).then(function(res){
+          saveBlob(res.name || '解密结果.json', res.text, 'application/json');
+          expMsg('已解密并导出 <b>' + esc(res.name || '解密结果.json') + '</b>' +
+                 '（' + (res.text.length / 1024).toFixed(0) + ' KB）', 'ok');
+        });
+      }).catch(function(e){
+        expMsg('解密失败：' + esc(e && e.message ? e.message : e), 'bad');
+      }).then(function(){ imp.value = ''; });
+    };
+
+    var cp = document.getElementById('expCopy');
+    if(cp) cp.onclick = function(){
+      var r;
+      try{ r = makeExport('txt'); }catch(e){ expMsg('复制失败：' + esc(e.message), 'bad'); return; }
+      var done = function(ok){
+        expMsg(ok ? ('已复制 ' + r.rows.toLocaleString() + ' 条到剪贴板' +
+                     (r.masked ? '（' + maskSummary() + '）' : ''))
+                  : '浏览器拒绝了剪贴板写入，请改用上面的「纯文本」导出下载。',
+               ok ? 'ok' : 'bad');
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(r.text).then(function(){ done(true); }, function(){ done(false); });
+      } else {
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = r.text;
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          done(ok);
+        }catch(e){ done(false); }
+      }
+    };
+  })();
+
+  /* 打开导出 / 高级筛选折叠时刷新一下计数 */
+  ['advFold', 'expFold'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.addEventListener('toggle', function(){ updateExpCnt(); updateAdvCnt(); });
+  });
+  updateExpCnt();
+
+  /* ---------- 本次 boot 的收尾 ---------- */
+  updateAutoChip();
+  applyFilter();
+  st.win = Math.max(0, st.list.length - CHUNK);
+  render();
+  highlightMonth(st.list.length - 1);
+  requestAnimationFrame(function(){ window.scrollTo(0, document.body.scrollHeight); });
+}
+
+/* ---------- 顶部「微博 / B站 / …」切换 ----------
+   按钮完全由会话清单渲染：sessions.json 里加一个会话，
+   这里就自动多一个按钮，不需要改 HTML。 */
+function bindSrcSwitch(){
+  var box = document.getElementById('srcSw');
+  if(!box) return;
+
+  box.innerHTML = '';
+  SESSION_ORDER.forEach(function(key){
+    if(!SOURCES[key]) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.dataset.src = key;
+    b.textContent = SOURCES[key].label;
+    box.appendChild(b);
+  });
+
+  Array.prototype.forEach.call(box.querySelectorAll('button[data-src]'), function(b){
+    var key = b.dataset.src, S = SOURCES[key];
+    var ok = !!(S && S.data);
+    b.setAttribute('aria-pressed', key === CUR_SRC ? 'true' : 'false');
+    // 数据还没生成时也保持可点：点进去会看到「该跑哪个更新」的引导，而不是一个点不动的灰按钮
+    if(ok) b.removeAttribute('data-empty'); else b.setAttribute('data-empty', '1');
+    if(ok && S.data.meta && S.data.meta.total != null){
+      var nEl = document.createElement('span');
+      nEl.className = 'n';
+      nEl.textContent = S.data.meta.total.toLocaleString();
+      b.appendChild(nEl);
+    }
+    b.onclick = function(){
+      // 注意：这里不能用绑定时算好的 ok —— 数据缺失也要能点进去，
+      // boot() 会渲染 SRC.empty 的引导（「该跑哪个更新」），否则按钮形同虚设。
+      if(key === CUR_SRC || !SOURCES[key]) return;
+      try{ localStorage.setItem('dm-src', key); }catch(e){}
+      boot(key);
+    };
+  });
+}
+
+/* ---------- 首次进入：优先上次看过的那个来源 ---------- */
+(function init(){
+  var want = SESSION_ORDER[0] || 'weibo';
+  try{ want = localStorage.getItem('dm-src') || want; }catch(e){}
+  if(!SOURCES[want] || !SOURCES[want].data){
+    // 上次看过的来源没有数据（还没备份过）→ 退到第一个有数据的；
+    // 全都没有就停在第一个，让页面显示「该跑哪个更新」的引导
+    var ready = SESSION_ORDER.filter(function(k){ return SOURCES[k] && SOURCES[k].data; });
+    want = ready.length ? ready[0] : (SESSION_ORDER[0] || 'weibo');
+  }
+  boot(want);
+})();
+</script>
+</body>
+</html>

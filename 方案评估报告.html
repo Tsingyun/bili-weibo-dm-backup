@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>私信备份方案 · 功能扩展与云端方案评估</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#fff; --text:#1a1d24; --muted:#5b6472; --line:#e4e8ef;
+    --accent:#4f7cff; --accent2:#7c3aed;
+    --p0:#e11d48; --p1:#d97706; --p2:#0891b2;
+    --ok:#059669; --warn:#b45309; --bad:#dc2626;
+    --code-bg:#f1f4f9;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:40px 22px 80px}
+  header.top{
+    background:linear-gradient(135deg,#4f7cff 0%,#7c3aed 100%);
+    color:#fff; border-radius:16px; padding:32px 34px; margin-bottom:26px;
+    box-shadow:0 10px 30px rgba(79,124,255,.22);
+  }
+  header.top h1{margin:0 0 8px; font-size:26px; letter-spacing:.3px}
+  header.top p{margin:0; opacity:.92; font-size:14px}
+  header.top .meta{margin-top:14px; font-size:12.5px; opacity:.8; border-top:1px solid rgba(255,255,255,.25); padding-top:12px}
+
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 28px; margin-bottom:22px; box-shadow:0 1px 3px rgba(16,24,40,.04)}
+  h2{font-size:20px; margin:0 0 4px; padding-bottom:12px; border-bottom:2px solid var(--line)}
+  h2 .num{color:var(--accent); font-weight:800; margin-right:8px}
+  h3{font-size:16px; margin:26px 0 10px; color:#111827}
+  h4{font-size:14.5px; margin:18px 0 8px; color:#243040}
+  p{margin:10px 0}
+  .sub{color:var(--muted); font-size:13.5px}
+
+  /* 结论卡 */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; margin:18px 0 4px}
+  .kpi{background:linear-gradient(180deg,#fbfcff,#f4f7ff); border:1px solid #dde5f7; border-radius:12px; padding:16px 18px}
+  .kpi .v{font-size:24px; font-weight:800; color:#1f2937; letter-spacing:-.5px}
+  .kpi .v.big{color:var(--p0)}
+  .kpi .k{font-size:12.5px; color:var(--muted); margin-top:4px}
+  .kpi .n{font-size:12px; color:#8b94a3; margin-top:6px}
+
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:13.5px}
+  th,td{padding:9px 11px; border:1px solid var(--line); text-align:left; vertical-align:top}
+  th{background:#f2f5fa; font-weight:650; color:#28313f; white-space:nowrap}
+  tbody tr:nth-child(even){background:#fafbfe}
+  td.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .nowrap{white-space:nowrap}
+  code{background:var(--code-bg); padding:1.5px 5px; border-radius:4px; font-size:12.5px; font-family:ui-monospace,Consolas,"Courier New",monospace}
+
+  .badge{display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700; color:#fff; letter-spacing:.5px}
+  .b-p0{background:var(--p0)} .b-p1{background:var(--p1)} .b-p2{background:var(--p2)}
+
+  .item{border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:16px 18px; margin:14px 0; background:#fdfdff}
+  .item.p0{border-left-color:var(--p0)}
+  .item.p1{border-left-color:var(--p1)}
+  .item.p2{border-left-color:var(--p2)}
+  .item h4{margin:0 0 10px; font-size:15px; display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+  .item .row{display:grid; grid-template-columns:78px 1fr; gap:4px 12px; font-size:13.5px; margin-top:6px}
+  .item .row .lb{color:var(--muted); font-weight:600}
+  .tagline{font-size:12px; color:#fff; background:#94a3b8; padding:2px 8px; border-radius:6px; font-weight:600}
+
+  .note{border-radius:10px; padding:13px 16px; margin:14px 0; font-size:13.5px; border:1px solid}
+  .note.warn{background:#fffbeb; border-color:#fcd34d; color:#7c4a03}
+  .note.bad{background:#fef2f2; border-color:#fca5a5; color:#8a1c1c}
+  .note.ok{background:#ecfdf5; border-color:#6ee7b7; color:#065f46}
+  .note b{font-weight:750}
+
+  ul{margin:8px 0; padding-left:22px}
+  li{margin:5px 0}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media(max-width:820px){.two{grid-template-columns:1fr}}
+  footer{text-align:center; color:#94a3b8; font-size:12.5px; margin-top:30px; line-height:2}
+  .bar{height:9px; background:#e9eef7; border-radius:999px; overflow:hidden; display:flex; min-width:110px}
+  .bar i{display:block; height:100%}
+  hr{border:0; border-top:1px dashed var(--line); margin:22px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>私信备份方案 · 功能扩展与云端方案评估</h1>
+  <p>面向：微博 + B站 双源私信备份（本机离线查看器）</p>
+  <div class="meta">
+    测量日期 2026-09-15 · 全部数据为本机实测（<code>du</code> / 逐文件遍历 / 分层抽样转码），价格与额度均已联网核实当期官网口径
+  </div>
+</header>
+
+<!-- ============ 实施状态（2026-09-16 更新） ============ -->
+<section>
+  <h2><span class="num">★</span>实施状态（2026-09-16 更新 · 2026-09-18 追加）</h2>
+  <p>下面 16 项建议<strong>除「P1-6 云端只读镜像」外已全部实施</strong>；
+     所有与<strong>云存储 / 云端运行</strong>相关的方案本次一律未做（按你的要求：零云端依赖）。</p>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="v big" style="color:var(--ok)">−84%</div>
+      <div class="k">图片压缩实际收益</div>
+      <div class="n">2,533 MB → 399 MB（压缩流程口径）</div>
+    </div>
+    <div class="kpi">
+      <div class="v">232 MB</div>
+      <div class="k">图片目录实际占用</div>
+      <div class="n">微博 173.7 MB + B站 58.4 MB</div>
+    </div>
+    <div class="kpi">
+      <div class="v">1,375</div>
+      <div class="k">已删除的原图</div>
+      <div class="n">微博 975 + B站 400（校验通过后才删）</div>
+    </div>
+    <div class="kpi">
+      <div class="v" style="color:var(--ok)">0</div>
+      <div class="k">体检问题</div>
+      <div class="n">doctor：错误 0 · 提醒 0</div>
+    </div>
+  </div>
+
+  <h3>逐项状态</h3>
+  <ul>
+    <li><b>P0-1 图片转码压缩</b> ✅ 已完成 —— 微博 2,033 MB → 289 MB、B站 500 MB → 110 MB，<b>原图已全部删除</b>，三处索引（messages / ocr / vlm）的文件名键已同步迁移。工具：<code>scripts/compress_images.py</code> + <code>压缩图片.cmd</code>（五阶段：转码 → 迁移 → 校验 → 才删）。</li>
+    <li><b>P0-2 索引快照与回滚</b> ✅ 已完成 —— <code>scripts/snapshot.mjs</code>，<code>--make</code> / <code>--list</code> / <code>--restore</code>，保留最近 N 份。</li>
+    <li><b>P0-3 一键体检</b> ✅ 已完成 —— <code>scripts/doctor.mjs</code>（支持 <code>--json</code>），覆盖图片引用 vs 磁盘、孤儿文件、索引覆盖率、残留锁、条数回退。当前：错误 0 · 提醒 0。</li>
+    <li><b>P0-4 定时自动更新</b> ✅ 已完成 —— <code>scripts/auto_update.ps1</code>（静默跑完整链路 + 日志轮转）+ <code>scripts/schedule_task.ps1</code>（Windows 计划任务，默认每周一 08:00，按「已登录时运行」注册）。<b>默认未注册</b>，双击 <code>注册定时更新.cmd</code> 一次即可。</li>
+    <li><b>P1-5 高级筛选</b> ✅ 已完成 —— 发送者 / 类型 / 日期区间 / 正则 / 自动回复隐藏，共 7 个交互控件。</li>
+    <li><b>P1-6 云端只读镜像</b> ⏸ <b>本次跳过</b> —— 属于云端能力，按要求不做。</li>
+    <li><b>P1-7 导出 / 加密分享包</b> ✅ 已完成 —— 按范围导出 + AES-GCM 256 + PBKDF2(SHA-256, 20 万次) 加密包，只能由本页导入解密。</li>
+    <li><b>P1-8 日历热力图</b> ✅ 已完成。</li>
+    <li><b>P1-9 多会话支持</b> ✅ 已完成 —— 唯一数据源 <code>sessions.json</code>，<code>生成会话清单.cmd</code> 生成页面用的 <code>sessions.js</code>；页面、更新脚本、索引脚本读同一份清单。</li>
+    <li><b>P1-10 结构化导出（JSONL）</b> ✅ 已完成 —— <code>scripts/export_jsonl.mjs</code>，实测 10,837 行（微博 7,925 + B站 2,912）/ 4.4 MB，支持时间窗、打码、瘦身。</li>
+    <li><b>P2-11 回复时延 / 聊天节律</b> ✅ 已完成。</li>
+    <li><b>P2-12 高频词 / 词云</b> ✅ 已完成。</li>
+    <li><b>P2-13 移动端专项优化</b> ✅ 已完成 —— 43 项移动端断言全绿。</li>
+    <li><b>P2-14 分享包加密 / 敏感信息打码</b> ✅ 已完成 —— 六类规则（手机号 / 邮箱 / 身份证 / 银行卡 / 账号 / 收货地址）。<b>2026-09-16 修了一个真 bug</b>：三条数字规则缺少数字边界，19 位银行卡会被咬成「身份证」、18 位身份证中间会被咬成「手机号」，现已用 <code>(?&lt;!\d)…(?!\d)</code> 修正，并补了 5 条回归断言。</li>
+    <li><b>P2-15 表情包一键导出</b> ✅ 已完成 —— <code>scripts/export_faces.mjs</code>，按使用次数编号 + CSV 清单 + 缩略图墙。</li>
+    <li><b>P2-16 本地全文检索</b> ✅ 已完成 —— <code>scripts/build_fts.mjs</code> + <code>scripts/search.mjs</code>（SQLite FTS5 / trigram，中文 ≥3 字走索引、短词自动回落 LIKE），10,837 条已入库。</li>
+    <li><b>云存储 / 云端运行（第 3 章全部方案）</b> ⏸ <b>本次跳过</b> —— 不引入任何云端或云存储依赖。</li>
+  </ul>
+
+  <h3>2026-09-16 追加：一处上下文 bug 修复 + 「隐藏这条消息」</h3>
+  <ul>
+    <li><b>修了一个真 bug</b> ✅ —— 「🚫 自动回复」开着时，<b>展开上下文</b>里会残留一个只剩
+        <code>[文字]</code> 的空气泡（正文被挡掉后触发了类型兜底占位，看起来像消息丢了或页面坏了）。
+        排查时还发现 <b>B站这条路径整条失效</b>：判定写成 <code>!!AUTO_REPLY &amp;&amp; …</code>，
+        而 B站的 <code>autoReply</code> 是空串 → 上下文里自动回复的<b>正文全露</b>。
+        现已统一改为按 <code>msgKind()</code> 结构化判定（微博匹配文案、B站看 <code>msg_source</code>），
+        并在上下文里整条跳过。</li>
+    <li><b>新增：右键「隐藏这条消息」</b> ✅ —— 桌面<b>右键</b>、手机<b>长按 0.5 秒</b>打开菜单
+        （🙈 隐藏这条消息 ／ 📋 复制文本）。隐藏后列表与搜索结果都不出现，
+        只在展开上下文时留一条虚线占位条，<b>正文与图片都不进 DOM</b>；
+        三条恢复路径：点占位条 ／ 右键占位条 →「↩ 恢复这条消息」／ 侧栏「🙈 已隐藏 N 条」连点两次全部恢复。
+        记录按数据源存在 <code>localStorage</code>，重开页面仍记得、两源互不干扰，也不影响统计与导出。</li>
+    <li><b>顺手补了一个色令牌</b> —— <code>--muted-strong</code>。<code>--muted</code> 落在浅色底上只有
+        <b>2.87:1</b>，做装饰没问题，但凡是要人读的正文都得换新令牌（实测 5.4:1）。
+        这条是被新加的<b>对比度断言</b>抓出来的，不是靠眼睛看出来的。</li>
+    <li><b>回归覆盖</b> —— 新增 <code>verify_hide.mjs</code>（72 项）· <code>shot_hide.mjs</code>（真实浏览器 50 项，
+        含右键菜单定位与对比度实测）· 反向验证 <code>_negctl_hide.mjs</code>（5 条核心断言都能被旧写法打红）。
+        全量：12 套回归 + 4 套浏览器测试，断言数与上一版完全一致。</li>
+  </ul>
+
+  <h3>2026-09-18 追加：「一天」的分界从 0 点改为凌晨 05:00</h3>
+  <p>原来的「按天」是<b>自然日 0 点</b>切。问题是聊天常常一聊就到深夜，
+     一段「23:40 聊到 01:20」的对话会被劈成两天；而这份备份里凌晨那一段的量并不小：</p>
+  <table>
+    <thead>
+      <tr><th>数据源</th><th class="num">落在 00:00~05:00 的消息</th><th class="num">占全部</th><th>旧口径下被挂到</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>微博（7,925 条）</td><td class="num">2,675</td><td class="num">33.8%</td><td>后一天（自然日）</td></tr>
+      <tr><td>B站（2,912 条）</td><td class="num">1,505</td><td class="num">51.7%</td><td>后一天（自然日）</td></tr>
+    </tbody>
+  </table>
+  <p>B站过半的消息都在这个区间里 —— 这不是个边角数字，所以按你要求统一改成
+     <b>一天 = 当天 05:00 → 次日 05:00</b>（一条消息归属<b>它前面最近的那个 05:00</b>，
+     即 <b>00:00~05:00 算前一天</b>）。</p>
+
+  <ul>
+    <li><b>一处口径、六处消费者</b> ✅ —— 分界线只写一次，由 <code>DAY_CUT = 5h</code> 统一派生；
+        聊天里的<b>日期分隔条</b>、右栏<b>月份时间轴</b>、<b>跳到日期</b>、高级筛选的<b>日期区间</b>、
+        折线图的<b>连续日轴</b>、日历<b>热力图</b>、<b>「一周里哪天最活跃」</b>全部改读同一套
+        <code>dayKey / monthKey / dayStartTs / dayEndTs</code>，不再各算各的。</li>
+    <li><b>口径同步到命令行与索引</b> ✅ —— <code>scripts/msg_kind.mjs</code>（<code>DAY_CUT_MS</code> 与
+        <code>dayStart/dayEnd</code>）、<code>scripts/build_fts.mjs</code>（索引里的 <code>day</code> 列）、
+        <code>scripts/search.mjs</code> 与 <code>scripts/export_jsonl.mjs</code> 的 <code>--since/--until</code>
+        全部对齐。所以命令行筛出来的和页面上看到的是同一批消息。</li>
+    <li><b>索引带分界规则哨兵</b> ✅ —— 建索引时把 <code>meta.day_cut = 18000000</code> 写进去；
+        若索引是 05:00 之前建的，<code>search.mjs</code> 会<b>明确提示重跑「重建搜索索引」</b>，
+        而不是默默按旧口径给结果。索引已重建：<b>10,837 行里有 4,180 行的 <code>day</code> 与自然日不同</b>。</li>
+    <li><b>统计数字随之重算</b> ✅ —— 微博这边：我 6,413 → <b>6,415</b> 条 ·
+        「有来有回」92/957 → <b>90/959</b> 天 · 单日峰值 59（2025-02-15）→ <b>53（2025-05-23）</b> ·
+        区间首日 2024-02-01 → <b>2024-01-31</b>。文档里几处过时数字也顺带对齐了页面
+        （如自动回复 1,350 → <b>1,352</b> 条、无消息天数 → <b>306</b>）。</li>
+    <li><b>顺手修了一处可读性</b> —— 分隔条上的日期原来用 <code>--muted</code>，落在浅色底上只有
+        <b>3.1:1</b>（WCAG 要求 4.5:1）。换成 <code>--muted-strong</code> 后实测
+        <b>浅色 5.81:1 / 深色 7.37:1</b>，是<b>对比度断言</b>量出来的，不是眼睛看着差不多。</li>
+    <li><b>回归覆盖</b> ——
+        <code>verify_daycut.mjs</code>（<b>118 项</b>，自带一套独立重算，不调用页面函数、不写死数字）·
+        <code>_negctl_daycut.mjs</code>（<b>6 轮反向验证</b>：逐一把六处改动退回旧写法，
+        确认对应核心断言真会报红，跑完自动还原）·
+        <code>shot_daycut.mjs</code>（<b>真实浏览器 31 项</b>：对比度实测 + 截图留档 + B站同口径）。
+        全量回归（14 套）断言数与改动前完全一致。</li>
+    <li><b>测试设计上踩到的一课</b> —— 最初写的是「断言首屏第一条消息正好是凌晨的」，纯撞运气。
+        改成「自己挑一条凌晨消息、跳到它所属的逻辑日再核对」时又踩两坑：聊天列表是<b>窗口化渲染</b>的
+        （DOM 里只留 150 条气泡），跳到靠末尾的日期会被窗口夹住、首条不再是落点；
+        而分隔条在<b>组首</b>、凌晨消息在<b>组尾</b>，组太大时两者同屏不了、截图看不出效果。
+        最终挑「数组中间 <b>且</b>当天条数最少」的逻辑日，两个问题一起解决 ——
+        现在截图里能直接看到 <code>2025-06-10</code> 那条分隔条下面挂着
+        <b>02:41</b> 的消息，再往下才是 <code>2025-06-11</code>。</li>
+  </ul>
+
+  <h3>刻意保留的东西</h3>
+  <ul>
+    <li><b>49 张 GIF</b>（微博 39 + B站 10）：动图转 WebP 有丢帧风险，保留原样。</li>
+    <li><b>4 张头像 <code>avatar_*.jpg</code></b>：更新脚本里头像路径是硬编码 <code>.jpg</code> 的，动了会让头像失联。</li>
+    <li><b>21 张「压完更大」的图</b>（微博 4 + B站 17）：WebP 不比原图小，保留原图，不做「压完更大」的蠢事。</li>
+  </ul>
+</section>
+
+<!-- ============ 结论速览 ============ -->
+<section>
+  <h2><span class="num">0</span>结论速览</h2>
+  <div class="kpis">
+    <div class="kpi">
+      <div class="v big">3.6 GB</div>
+      <div class="k">本地总占用</div>
+      <div class="n">其中真正的备份数据 2.5 GB</div>
+    </div>
+    <div class="kpi">
+      <div class="v">2.47 GB</div>
+      <div class="k">图片占了大头</div>
+      <div class="n">1445 个文件，均 1.99 MB</div>
+    </div>
+    <div class="kpi">
+      <div class="v">1.1 GB</div>
+      <div class="k">可随时回收</div>
+      <div class="n">浏览器配置 + OCR 环境，都能重建</div>
+    </div>
+    <div class="kpi">
+      <div class="v" style="color:var(--ok)">−94%</div>
+      <div class="k">图片压缩实测收益</div>
+      <div class="n">2.47 GB → 0.13 GB（长边限 2048）</div>
+    </div>
+  </div>
+
+  <h3>三句话回答你的三个问题</h3>
+  <ul>
+    <li><b>还能补什么</b>：优先做 4 件事 —— <b>图片压缩</b>（省 1.65~2.34 GB）、<b>快照回滚</b>（防复现覆写事故）、<b>一键体检</b>、<b>定时自动更新</b>。这 4 项投入小、收益直接，其余 12 项按需选。</li>
+    <li><b>占用多少</b>：总计 <b>3.6 GB</b>。真正的备份数据 <b>2.5 GB</b>（微博 2.0 G + B站 489 M），另外 <b>1.1 GB</b> 是浏览器配置（739 MB）和 OCR 运行环境（354 MB），都属可回收。</li>
+    <li><b>云端怎么放</b>：数据量很小（压缩后不到 1 GB），<b>Cloudflare R2 免费额度内就能白嫖</b>（10 GB + 出口流量免费）；要跑自动化，<b>你已经在用的 GitHub Actions 就够</b>（私有仓库 2000 分钟/月）。想彻底不用管家里电脑，才需要花 ¥60~200/年 买轻量服务器。</li>
+  </ul>
+</section>
+
+<!-- ============ 第一部分：存储占用 ============ -->
+<section>
+  <h2><span class="num">1</span>本地实际占用（实测）</h2>
+
+  <h3>1.1 总账</h3>
+  <table>
+    <thead>
+      <tr><th>目录 / 类别</th><th class="num">体积</th><th class="num">占比</th><th>性质</th><th>能否回收</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>data/images/</code></td><td class="num">2021 MB</td><td class="num">55.7%</td><td>微博图片 1018 张</td><td>需保留，<b>可压缩</b></td></tr>
+      <tr><td><code>bili/images/</code></td><td class="num">449 MB</td><td class="num">12.4%</td><td>B站图片 427 张</td><td>需保留，<b>可压缩</b></td></tr>
+      <tr><td><code>.edge-profile/</code></td><td class="num">739 MB</td><td class="num">20.4%</td><td>专用浏览器配置，<b>仅用来刷一次 Cookie</b></td><td><b>可删</b>（重登录即可）</td></tr>
+      <tr><td><code>.ocr-env/</code></td><td class="num">354 MB</td><td class="num">9.8%</td><td>OCR 的 Python 环境（模型本体仅 31 MB，其余是 onnxruntime 依赖）</td><td><b>可删</b>（跑「安装OCR环境.cmd」重建）</td></tr>
+      <tr><td><code>data/faces/</code> + <code>bili/faces/</code></td><td class="num">40 MB</td><td class="num">1.1%</td><td>官网表情图 1793 张</td><td>可重新下载</td></tr>
+      <tr><td><code>scripts/</code></td><td class="num">11 MB</td><td class="num">0.3%</td><td>脚本</td><td>必须保留</td></tr>
+      <tr><td>索引 json + js</td><td class="num">8.0 MB</td><td class="num">0.2%</td><td>消息 / OCR / VLM / 表情字典</td><td>必须保留</td></tr>
+      <tr><td><code>data/raw/</code> + <code>bili/raw/</code></td><td class="num">9.2 MB</td><td class="num">0.3%</td><td>抓取时的原始分页留档</td><td>可删（<code>messages</code> 已含全部信息）</td></tr>
+      <tr style="background:#eef4ff;font-weight:700"><td>合计</td><td class="num">3.6 GB</td><td class="num">100%</td><td>= 备份数据 2.5 GB + 可回收 1.1 GB</td><td></td></tr>
+    </tbody>
+  </table>
+
+  <div class="note ok">
+    <b>能立刻腾出的空间：1.1 GB。</b>删 <code>.edge-profile</code> 与 <code>.ocr-env</code> 即可（各 739 MB / 354 MB）。
+    代价：前者下次更新要重新登录一次微博/B站，后者要重跑一次环境安装脚本。<b>建议先不动 <code>.edge-profile</code></b>（Cookie 刷新靠它），等确定改用持久 Cookie 方案再删。
+  </div>
+
+  <h3>1.2 图片体积分布（两套合计 1445 张 / 2470 MB）</h3>
+  <table>
+    <thead><tr><th>体积区间</th><th class="num">张数</th><th class="num">合计体积</th><th>在总量里</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>≥ 5 MB</td><td class="num">97</td><td class="num">752 MB</td><td><span class="bar"><i style="width:30%;background:var(--p0)"></i></span>30%</td><td>仅 6.7% 的图，占了 3 成体积</td></tr>
+      <tr><td>1 ~ 5 MB</td><td class="num">651</td><td class="num">1522 MB</td><td><span class="bar"><i style="width:62%;background:var(--p1)"></i></span>62%</td><td><b>绝对大头</b>，多为原图截图</td></tr>
+      <tr><td>200 KB ~ 1 MB</td><td class="num">306</td><td class="num">159 MB</td><td><span class="bar"><i style="width:6%;background:var(--accent)"></i></span>6%</td><td></td></tr>
+      <tr><td>&lt; 200 KB</td><td class="num">391</td><td class="num">36 MB</td><td><span class="bar"><i style="width:2%;background:#94a3b8"></i></span>1.4%</td><td>小图/表情，不值得压</td></tr>
+    </tbody>
+  </table>
+  <p class="sub">格式分布：JPG 1103 张 / 1802 MB · PNG 293 张 / 641 MB · GIF 49 张 / 26 MB。最大单文件 18.1 MB。<br>
+  <b>内容完全重复的图片只有 10 MB（0.4%）</b> —— 所以「去重」没什么收益，别浪费时间。</p>
+
+  <h3>1.3 压缩收益：分层抽样实测</h3>
+  <p class="sub">方法：按体积分 4 层、每层随机抽 25 张，逐张真实转码后算出「每层各自的压缩率」，再按全量里各层的真实字节数加权外推。
+  为什么不直接随机抽：大图压缩率最高，会把收益算得虚高。</p>
+  <table>
+    <thead>
+      <tr><th>方案</th><th class="num">抽样压缩率</th><th class="num">外推全量</th><th class="num">可省</th><th>适用</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>A. WebP q82 · 原尺寸</b></td><td class="num">33%</td><td class="num">818 MB</td><td class="num" style="color:var(--ok);font-weight:700">−1652 MB</td>
+        <td>画面尺寸不变、肉眼几乎无差 → <b>适合当存档档</b></td>
+      </tr>
+      <tr>
+        <td><b>B. WebP q78 · 长边限 2560</b></td><td class="num">6%</td><td class="num">159 MB</td><td class="num" style="color:var(--ok);font-weight:700">−2311 MB</td>
+        <td>2K 屏刚好铺满 → 适合日常翻看</td>
+      </tr>
+      <tr>
+        <td><b>C. WebP q78 · 长边限 2048</b></td><td class="num">5%</td><td class="num">126 MB</td><td class="num" style="color:var(--ok);font-weight:700">−2344 MB</td>
+        <td>手机/网页友好，最省</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note warn">
+    <b>压之前要知道的两件事：</b>
+    <ul style="margin:6px 0 0">
+      <li><b>索引会失联。</b>OCR / 描述索引是以<b>文件名为键</b>的（<code>img_18r8ezt.gif</code>）。转成 <code>.webp</code> 后文件名变了，<code>ocr.json</code>、<code>vlm.json</code>、<code>messages.json</code> 里的 <code>images[].local</code> 必须一起迁移 —— 得写一个迁移脚本并回归验证，不能只转码。</li>
+      <li><b>原图价值。</b>如果以后想重跑 OCR，压缩过的图识别率会略降。稳妥做法：<b>原图打包存云端冷档</b>（深度归档约 ¥0.09/年，等于不要钱），本地只留压缩版。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 第二部分：功能 ============ -->
+<section>
+  <h2><span class="num">2</span>可补充的功能（按优先级）</h2>
+  <p class="sub">「已有」的不再列出。以下 16 项全部基于当前实现的真实缺口，已逐条核对过代码与数据。</p>
+
+  <h3><span class="badge b-p0">P0</span> 建议优先做 —— 投入小、收益直接</h3>
+
+  <div class="item p0">
+    <h4><span class="badge b-p0">P0</span> 1 · 图片转码压缩（WebP） <span class="tagline">省 1.65~2.34 GB</span></h4>
+    <div class="row">
+      <span class="lb">价值</span><span>本地占用直接砍到 1/3 ~ 1/20。你之前提过硬盘紧张，而图片就是唯一的体积大头（占 69%）。压完整套备份 ≈ 0.9 GB（A 档）或 0.2 GB（C 档），能塞进几乎所有免费云额度。</span>
+      <span class="lb">复杂度</span><span><b>中</b>。不只是转码：需同时迁移三处索引的文件名键 + 更新 <code>messages.json</code> 里的图片路径 + 重新跑一遍查看页回归。建议做成「一次性迁移脚本 + 更新链路里可选转码」两步。</span>
+      <span class="lb">实测</span><span>见 §1.3，分层抽样转过真实数据，不是估算。</span>
+      <span class="lb">建议</span><span>选 <b>A 档（原尺寸 q82）</b>先跑，肉眼无损；确定能接受再考虑 B/C 档。</span>
+    </div>
+  </div>
+
+  <div class="item p0">
+    <h4><span class="badge b-p0">P0</span> 2 · 索引快照与回滚 <span class="tagline">防复现覆写事故</span></h4>
+    <div class="row">
+      <span class="lb">价值</span><span>本项目真实发生过一次「边跑边写」把 174 条图片描述覆写成 59 条的事故。现在虽然加了单实例锁 + 读回合并，但<b>锁挡不住逻辑写错、脚本改坏、误跑全量重建</b>。有快照就能一键回退。</span>
+      <span class="lb">复杂度</span><span><b>低</b>。更新链路里加一步：把 <code>messages/ocr/vlm/faces</code> 打包（就 8 MB）存成带时间戳的 zip，保留最近 N 份。</span>
+      <span class="lb">建议</span><span>强烈建议做。成本极低，但能兜住最贵的一类损失。</span>
+    </div>
+  </div>
+
+  <div class="item p0">
+    <h4><span class="badge b-p0">P0</span> 3 · 一键体检 + 缺失图补齐 <span class="tagline">把散落的校验固定成命令</span></h4>
+    <div class="row">
+      <span class="lb">价值</span><span>这次排查用到的检查（图片引用 vs 磁盘文件是否一一对应、有没有孤儿文件、索引覆盖率、锁文件是否残留、消息条数是否回退）目前都是临时写代码跑的。固化成 <code>体检.cmd</code> 后，每次更新完跑一下就知道有没有坏，并支持一键补下缺失的图。</span>
+      <span class="lb">复杂度</span><span><b>低</b>。逻辑都已经写过一遍了，只是收拢 + 输出成体检报告。</span>
+      <span class="lb">建议</span><span>建议做。这是「数据可信」的兜底。</span>
+    </div>
+  </div>
+
+  <div class="item p0">
+    <h4><span class="badge b-p0">P0</span> 4 · 定时自动更新（本机计划任务） <span class="tagline">不再依赖记得双击</span></h4>
+    <div class="row">
+      <span class="lb">价值</span><span>现在是「想起来才双击更新」。设成每天固定时间自动跑一次，备份就真的不会断更。你之前问过要不要加，这次可以一起做掉。</span>
+      <span class="lb">复杂度</span><span><b>低</b>。一条 <code>schtasks</code> 注册 + 一个静默版启动器（跑完自动关窗、日志落文件）。<b>注意</b>：我这边的沙箱不允许创建进程/计划任务，需要你双击一次注册脚本。</span>
+      <span class="lb">建议</span><span>建议做。配合 P0-2 快照更稳。</span>
+    </div>
+  </div>
+
+  <h3><span class="badge b-p1">P1</span> 值得做 —— 中等投入，体验提升明显</h3>
+
+  <div class="item p1">
+    <h4><span class="badge b-p1">P1</span> 5 · 高级筛选</h4>
+    <div class="row">
+      <span class="lb">价值</span><span>现在只有全文搜索。数据量到 2912 + 数千条后，很自然会想「只看我发的图片」「只看某个标签」「只看 2024 年下半年」「只看分享卡片」。加上发送者 / 类型 / 日期区间 / 正则四个维度会好用很多。</span>
+      <span class="lb">复杂度</span><span><b>低~中</b>。左侧面板加筛选组 + 在现有过滤函数里叠加条件，复用现有 DOM 重建机制。</span>
+    </div>
+  </div>
+
+  <div class="item p1">
+    <h4><span class="badge b-p1">P1</span> 6 · 云端只读镜像（手机随时看）</h4>
+    <div class="row">
+      <span class="lb">价值</span><span>现在只能在装了这个目录的电脑上看。把查看页 + 图片放到云端后，手机浏览器就能翻，也能分享给特定的人。</span>
+      <span class="lb">复杂度</span><span><b>中~高</b>。需配合云存储（见 §3）：图片上传 + 查看页改为指向远端 URL + 加访问控制。属于「要真的动手做工程」的一档。</span>
+      <span class="lb">风险</span><span><b>隐私</b>：私信是私密内容，一旦公开托管就等于公开。必须配访问控制（Cloudflare Access 免费版可指定邮箱白名单）。</span>
+    </div>
+  </div>
+
+  <div class="item p1">
+    <h4><span class="badge b-p1">P1</span> 7 · 导出功能（按范围导出 / 加密分享包）</h4>
+    <div class="row">
+      <span class="lb">价值</span><span>把某段时间的对话导出成 HTML / Markdown / TXT / JSON —— 既能长期存档（不依赖这个查看器），也能给别人一份、或喂给大模型。</span>
+      <span class="lb">复杂度</span><span><b>中</b>。渲染逻辑可复用；难点在图片要不要打包内联。</span>
+    </div>
+  </div>
+
+  <div class="item p1">
+    <h4><span class="badge b-p1">P1</span> 8 · 日历热力图</h4>
+    <div class="row">
+      <span class="lb">价值</span><span>已有「按天折线图」，但折线看不出一年的疏密。GitHub 那种方格热力图一眼就能看出哪段时间聊得密、哪天断档，也顺手能发现「哪几天根本没抓到」。</span>
+      <span class="lb">复杂度</span><span><b>低</b>。用已有按天统计直接渲染网格。</span>
+    </div>
+  </div>
+
+  <div class="item p1">
+    <h4><span class="badge b-p1">P1</span> 9 · 多会话支持</h4>
+    <div class="row">
+      <span class="lb">价值</span><span>当前聊天对象是<b>写死在脚本里</b>的（微博一个、B站一个）。如果想再备份第二个会话，现在得改代码。做成配置项后，加一行就能多备份一个对象。</span>
+      <span class="lb">复杂度</span><span><b>中</b>。数据目录要按会话分桶、查看页来源注册表要扩展。如果确定只备份这两个对象，可以不做。</span>
+    </div>
+  </div>
+
+  <div class="item p1">
+    <h4><span class="badge b-p1">P1</span> 10 · 结构化导出给 LLM 用（JSONL）</h4>
+    <div class="row">
+      <span class="lb">价值</span><span>把对话 + 图片 OCR 文字 + 图片描述 + 卡片标题摊平成一行一条的 JSONL。这样可以直接做语义检索、按主题归类、生成时间线摘要 —— 你做直播总结那套经验正好能复用。</span>
+      <span class="lb">复杂度</span><span><b>低</b>。纯数据加工，不需要动界面。</span>
+    </div>
+  </div>
+
+  <h3><span class="badge b-p2">P2</span> 锦上添花 —— 有空再说</h3>
+
+  <table>
+    <thead><tr><th>功能</th><th>价值</th><th class="nowrap">复杂度</th></tr></thead>
+    <tbody>
+      <tr><td>11 · 回复时延 / 聊天节律统计</td><td>谁先开口、平均多久回、活跃时段分布 —— 趣味性 + 数据感</td><td>中低</td></tr>
+      <tr><td>12 · 高频词 / 词云</td><td>一眼看出这段关系里反复出现的话题</td><td>中</td></tr>
+      <tr><td>13 · 移动端专项优化</td><td>你一直很在意手机上的显示，可以再细调一版</td><td>中</td></tr>
+      <tr><td>14 · 分享包加密 / 敏感信息打码</td><td>要给别人看时，先把手机号、地址之类遮掉</td><td>中</td></tr>
+      <tr><td>15 · 表情包一键导出</td><td>把收藏的表情图批量导出成文件夹</td><td>低</td></tr>
+      <tr><td>16 · 本地全文检索索引（SQLite FTS5）</td><td>现在搜索是内存里全量扫；数据量再大一个数量级才需要提速</td><td>中</td></tr>
+    </tbody>
+  </table>
+
+  <h3>不建议做 / 做不到</h3>
+  <table>
+    <thead><tr><th>想法</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td>把已撤回的消息原文找回来</td><td><b>做不到。</b>撤回后服务端不再下发原文，本地从来没拿到过 —— 不是实现问题，是数据不存在。</td></tr>
+      <tr><td>备份语音 / 视频消息</td><td><b>没必要。</b>实测两套全量数据里没有这类消息类型（B站 <code>msg_type</code> 只出现 1/2/5/6/7/10/14）。</td></tr>
+      <tr><td>图片去重省空间</td><td><b>收益太小。</b>实测内容完全重复的只有 10 MB（0.4%）。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ 第三部分：云端 ============ -->
+<section>
+  <h2><span class="num">3</span>云端方案：存储 与 运行</h2>
+  <p class="sub">先说一个关键前提 —— 我核实过代码：<b>抓取脚本本身不需要浏览器</b>。专用浏览器只用来「刷一次 Cookie」，
+  脚本会先读本地 <code>cookie_header.txt</code>，连不上浏览器时会打印「未连接浏览器，沿用本地 Cookie」继续跑。
+  也就是说 <b>整条抓取链路本来就是可无头运行的</b>，这正是它能上云的前提。</p>
+
+  <h3>3.1 云存储（放备份数据）</h3>
+  <p class="sub">按当前 2.5 GB 计算。压缩后（§1.3）只要 0.2~0.9 GB，下列方案会更容易落在免费额度内。</p>
+  <table>
+    <thead>
+      <tr><th>方案</th><th class="nowrap">当前量成本</th><th>可靠性</th><th>易用性</th><th>适用场景</th><th>注意</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>Cloudflare R2</b><br><span class="sub">S3 兼容对象存储</span></td>
+        <td class="nowrap" style="color:var(--ok);font-weight:700">¥0<br><span class="sub">10 GB 免费额度内</span></td>
+        <td>极高<br><span class="sub">11 个 9 持久性</span></td>
+        <td>中<br><span class="sub">要写几行 S3 代码，需绑卡</span></td>
+        <td><b>程序化读写 + 对外提供图片</b>。出口流量永久免费，这是它最大的杀手锏</td>
+        <td>需外币卡；超 10 GB 后 $0.015/GB/月（约 ¥0.11）</td>
+      </tr>
+      <tr>
+        <td><b>Backblaze B2</b></td>
+        <td class="nowrap" style="color:var(--ok);font-weight:700">¥0<br><span class="sub">10 GB 免费额度内</span></td>
+        <td>高</td>
+        <td>中</td>
+        <td>纯归档、极少下载。<b>单位价最低</b>（$6.95/TB/月 ≈ ¥0.05/GB）</td>
+        <td>出口免费仅限「≤ 3 倍存量」；超量 $0.01/GB</td>
+      </tr>
+      <tr>
+        <td><b>腾讯云 COS</b></td>
+        <td class="nowrap">标准 ≈¥3.5/年<br>深度归档 ≈¥0.09/年</td>
+        <td>高</td>
+        <td>高<br><span class="sub">中文控制台，国内访问快</span></td>
+        <td>想在境内、想要正规发票与合规</td>
+        <td><b>外网下行 0.5 元/GB</b> 是隐性大头 —— 一旦在线看图就烧钱；深度归档取回需解冻</td>
+      </tr>
+      <tr>
+        <td><b>国内网盘</b><br><span class="sub">夸克 / 阿里云盘 / 123 / 百度</span></td>
+        <td class="nowrap">¥0 ~ ¥298/年<br><span class="sub">夸克 SVIP 约 ¥110~168/年 6 TB<br>阿里云盘 VIP 约 ¥99~168/年<br>123 云盘 VIP 约 ¥99/年 2 TB 不限速<br>百度 SVIP 约 ¥298/年 5 TB</span></td>
+        <td>中<br><span class="sub">存在文件被屏蔽/和谐的风险</span></td>
+        <td>极高<br><span class="sub">客户端点点就行</span></td>
+        <td><b>最省事的一条路</b>：手动丢一个压缩包上去。免费额度（夸克活动常给 1 TB）其实就够</td>
+        <td>没有 S3 API，自动化困难（<b>但夸克已装官方 CLI Skill，可脚本化</b>）；限速依赖会员</td>
+      </tr>
+      <tr>
+        <td><b>坚果云</b></td>
+        <td class="nowrap">¥199/年（专业版）</td>
+        <td>高</td>
+        <td>高<br><span class="sub">支持 WebDAV</span></td>
+        <td>要「自动增量同步」而不是手动上传 —— WebDAV 能被脚本直接调</td>
+        <td>免费版上传流量很小，不够用</td>
+      </tr>
+      <tr>
+        <td><b>OneDrive / Google Drive</b></td>
+        <td class="nowrap">¥0（15 GB）</td>
+        <td>高</td>
+        <td>中</td>
+        <td>已有 Office / 苹果生态的用户</td>
+        <td>国内访问不稳定，不适合当自动化目标</td>
+      </tr>
+      <tr>
+        <td><b>移动硬盘 / NAS</b></td>
+        <td class="nowrap">一次性 ¥300~2000</td>
+        <td><b>最高</b><br><span class="sub">完全离网、自己掌控</span></td>
+        <td>高</td>
+        <td>真正的离线灾备。云端再多，也该有一份摸得到的</td>
+        <td>需自己维护；单盘仍会坏，重要就双备份</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note bad">
+    <b>不推荐 Wasabi</b>：最低按 1 TB 计费（$7.99/月 ≈ ¥57/月）且要求 90 天最短存储期。对 2.5 GB 的数据量，这是纯浪费。
+  </div>
+
+  <h3>3.2 云端运行（跑抓取 + OCR + 图片描述）</h3>
+  <table>
+    <thead>
+      <tr><th>方案</th><th class="nowrap">成本</th><th>可靠性</th><th>易用性</th><th>适用</th><th>坑</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>本机 + 计划任务</b><br><span class="sub">现状增强</span></td>
+        <td class="nowrap" style="color:var(--ok);font-weight:700">¥0</td>
+        <td>取决于是否开机</td>
+        <td>极高<br><span class="sub">已经跑通，只加一层调度</span></td>
+        <td><b>推荐作为主链路。</b>OCR 用本地 CPU 不花钱，数据不出门，隐私最好</td>
+        <td>得开机；且沙箱不允许我建计划任务，需你点一次注册脚本</td>
+      </tr>
+      <tr>
+        <td><b>GitHub Actions</b><br><span class="sub">你已在用它做贴吧签到</span></td>
+        <td class="nowrap" style="color:var(--ok);font-weight:700">¥0<br><span class="sub">私有仓库 2000 分钟/月；公开仓库不限</span></td>
+        <td>高</td>
+        <td>高<br><span class="sub">会写 YAML 就能上手</span></td>
+        <td><b>无人值守的首选。</b>每天定时抓取 → OCR → 描述 → 推云端，完全不用管</td>
+        <td>① Cookie 要放进 Secrets（等于把账号凭据托管给 GitHub，需你自己接受）；② 免费额度只有 500 MB artifact 存储，<b>图片必须存到 R2/网盘，不能靠 GitHub</b>；③ 云主机 IP 可能触发平台风控；④ OCR 要在 workflow 里装 onnxruntime（可行）</td>
+      </tr>
+      <tr>
+        <td><b>Cloudflare Workers + Cron</b></td>
+        <td class="nowrap" style="color:var(--ok);font-weight:700">¥0<br><span class="sub">10 万请求/天 + 5 个定时器</span></td>
+        <td>高</td>
+        <td>中</td>
+        <td>只需「轻量抓取 → 转存 R2」的场景；顺带能托管手机版查看页</td>
+        <td><b>每次调用只有 10 ms CPU</b>，跑不动本地 OCR；没有文件系统、内存 128 MB。抓取靠 I/O 不占 CPU 所以可行，但工程上要重写</td>
+      </tr>
+      <tr>
+        <td><b>腾讯云函数 SCF</b></td>
+        <td class="nowrap">政策已变<br><span class="sub">有报道称 3 个月试用后需最低套餐（约 ¥9.9/月）</span></td>
+        <td>高</td>
+        <td>中</td>
+        <td>想让抓取走境内网络、降低风控概率</td>
+        <td>免费额度口径各来源不一致，<b>需以官网当期为准</b>；不宜作为「确定免费」的前提</td>
+      </tr>
+      <tr>
+        <td><b>轻量应用服务器 / VPS</b></td>
+        <td class="nowrap">约 ¥60~200/年<br><span class="sub">新人价；常规约 ¥24~40/月</span></td>
+        <td>高</td>
+        <td>中<br><span class="sub">要自己装环境</span></td>
+        <td><b>唯一能「完整跑整条链路（含 OCR）且不依赖家里电脑」的选项</b></td>
+        <td>要维护系统；你此前已明确放弃过云部署方案，偏好本地</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.3 四种组合，按你的取向挑一个</h3>
+  <div class="two">
+    <div class="item p0" style="margin:0">
+      <h4>组合 ① 零成本 + 隐私优先 <span class="tagline">最推荐</span></h4>
+      <p style="font-size:13.5px;margin:0">
+        <b>本机链路不变</b>（继续用本地 CPU 跑 OCR）+ 每天自动更新 + <b>每周把压缩后的成品包（约 0.2~0.9 GB）自动传一份到 R2 或夸克网盘</b>。
+      </p>
+      <div class="row" style="margin-top:8px">
+        <span class="lb">成本</span><span>¥0</span>
+        <span class="lb">可靠性</span><span>本地为主 + 云端一份异地副本，不怕硬盘坏</span>
+        <span class="lb">代价</span><span>依赖电脑开机（可设成开机后补跑）</span>
+      </div>
+    </div>
+
+    <div class="item p1" style="margin:0">
+      <h4>组合 ② 手机随时翻</h4>
+      <p style="font-size:13.5px;margin:0">
+        图片压到 WebP 后放 <b>R2</b>（免费额度内），查看页托管到 <b>Cloudflare Pages</b>（无限带宽、无限请求），手机浏览器直接看。
+      </p>
+      <div class="row" style="margin-top:8px">
+        <span class="lb">成本</span><span>¥0</span>
+        <span class="lb">可靠性</span><span>高（Pages 全球 CDN）</span>
+        <span class="lb">代价</span><span>要改造成「远端 URL 版」查看页；<b>必须加访问控制</b></span>
+      </div>
+    </div>
+
+    <div class="item p1" style="margin:0">
+      <h4>组合 ③ 完全无人值守</h4>
+      <p style="font-size:13.5px;margin:0">
+        <b>GitHub Actions 每天定时</b>抓取 + OCR + 图片描述 → 图片推 R2 → 索引提交私有仓库 → Pages 自动发布。
+      </p>
+      <div class="row" style="margin-top:8px">
+        <span class="lb">成本</span><span>¥0（2000 分钟额度远远够用）</span>
+        <span class="lb">可靠性</span><span>高，不再依赖家里电脑</span>
+        <span class="lb">代价</span><span>Cookie 需存 GitHub Secrets；需接受「凭据托管给第三方」</span>
+      </div>
+    </div>
+
+    <div class="item p2" style="margin:0">
+      <h4>组合 ④ 花钱买省心</h4>
+      <p style="font-size:13.5px;margin:0">
+        腾讯云轻量服务器跑完整链路 + COS 存图。境内网络对微博/B站最友好，不碰风控。
+      </p>
+      <div class="row" style="margin-top:8px">
+        <span class="lb">成本</span><span>约 ¥60~200/年（促销价）</span>
+        <span class="lb">可靠性</span><span>高</span>
+        <span class="lb">代价</span><span>要维护服务器；COS 在线看图另有流量费</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note warn">
+    <b>三条隐私红线，选任何云方案前请先确认：</b>
+    <ul style="margin:6px 0 0">
+      <li>私信是<b>私密对话</b>，包含你和对方的所有往来。<b>任何「公开链接」都等于公开</b>。要上线就一定要设访问控制（Cloudflare Access 免费版可做邮箱白名单）。</li>
+      <li><code>bili/cookie_header.txt</code> 与微博的 Cookie <b>等同账号密码</b>。放进 GitHub Secrets 是可接受的工程做法，但你要清楚这意味着凭据交给了平台。</li>
+      <li>国内网盘有<b>内容审查与和谐</b>风险。不要把唯一一份备份只放在某一个公有网盘里 —— 这是常识，不是技术问题。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============ 下一步 ============ -->
+<section>
+  <h2><span class="num">4</span>建议的下一步</h2>
+  <p>如果要动手，我建议的顺序是：</p>
+  <ol>
+    <li><b>先做 P0-2 快照回滚 + P0-3 一键体检</b>（半天内能好，先给数据上保险）</li>
+    <li><b>再做 P0-4 定时自动更新</b>（之后就不用惦记了）</li>
+    <li><b>然后做 P0-1 图片压缩</b>（收益最大，但要迁移索引，放最后稳一点；建议先拿 100 张试跑验证索引迁移无误）</li>
+    <li>P1 里挑你想要的（手机随时看 / 导出 / 高级筛选 价值最高）</li>
+    <li>云端先上<b>组合 ①</b>（零成本、隐私不动），确认用着顺再考虑组合 ③</li>
+  </ol>
+  <p class="sub">告诉我你要哪几项，我直接开始做。也可以只挑一件先试水。</p>
+</section>
+
+<footer>
+  测量方法：<code>du -sh</code> 逐目录统计 · 逐文件遍历求体积分布 · MD5 全量比对查重复 · 按体积分层随机抽样 25 张/层做真实转码后加权外推。<br>
+  价格与免费额度：2026-09-15 联网核实 Cloudflare R2 官方定价页、Backblaze B2 定价页、腾讯云 COS 定价文档、GitHub Actions 计费文档及国内网盘公开价目。<br>
+  诊断脚本已留在项目内：<code>scripts/_explore/probe_webp_gain.py</code>（可随时复跑复现本报告 §1.3）。
+</footer>
+
+</div>
+</body>
+</html>
