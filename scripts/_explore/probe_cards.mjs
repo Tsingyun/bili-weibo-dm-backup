@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const ROOT = path.resolve(import.meta.dirname, '..', '..');
+const messages = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'messages.json'), 'utf8'));
+const nc = messages.filter(m => (m.media_type === 13 || m.media_type === 14) && !m.card);
+console.log('mt13/14 无 card 条数:', nc.length);
+nc.slice(0, 8).forEach(m => console.log(' -', m.media_type, JSON.stringify((m.text || '').slice(0, 60)), 'imgs=' + (m.images || []).length, 'links=' + (m.links || []).length, 'recalled=' + m.recalled));
+console.log('--- mt14 有 card 的样例 ---');
+messages.filter(m => m.media_type === 14 && m.card).slice(0, 3).forEach(m => console.log(' *', JSON.stringify(m.card).slice(0, 160)));
+console.log('--- mt4 / mt10 现状 ---');
+messages.filter(m => m.media_type === 4 || m.media_type === 10).slice(0, 6).forEach(m => console.log(' #', m.media_type, m.type, JSON.stringify((m.text || '').slice(0, 20)), 'imgs=' + (m.images || []).map(i => i.file).join(',')));
+console.log('--- 有 gif_video 的样例 ---');
+messages.filter(m => m.gif_video).slice(0, 2).forEach(m => console.log(' ~', m.media_type, m.gif_video.slice(0, 100)));

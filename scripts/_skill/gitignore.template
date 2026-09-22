@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────
+# 隐私红线：下面这些含「真实私信内容」或「登录凭据」，一律不要入库 / 不要分享。
+#   所有数据只存在本机，不上传任何地方；
+#   cookie_header.txt 等同于账号密码，绝不分享。
+# ─────────────────────────────────────────────────────────────
+
+# 私信数据：messages / 图片 / OCR / VLM 索引 + 登录 Cookie
+/data/
+/bili/
+
+# 私信全文检索库（SQLite FTS5）
+/search/
+
+# 导出的私信 JSONL 与表情包
+/exports/
+
+# ── WebUI ──
+# 待导入的压缩包 + 已导入的他人备份：同样是**别人的真实私信内容**，
+# 属于同一道隐私红线，不要入库、也不要跟着代码分享出去。
+/imports/
+/imported/
+# WebUI 自己的运行状态（上次抓取/导出时间等）
+/.webui/
+
+# 索引快照（本机备份，由 scripts/snapshot.mjs 生成）
+/snapshots/
+
+# 专用浏览器登录态（里面就是你的登录 Cookie）
+/.edge-profile/
+
+# OCR 的 Python 环境
+/.ocr-env/
+
+# ── 生成物 ──
+# ⚠ .gitignore 不支持行尾注释：`/a.js # 说明` 会被当成一整个文件名，规则会静默失效，
+#    注释必须自己独占一行（这个坑踩过一次，排查了很久）。
+# sessions.js 由 scripts/build_sessions.mjs 从 sessions.json 生成
+/sessions.js
+*.db
+*.db-shm
+*.db-wal
+*.lock
+
+# 日志
+logs/
+*.log
+
+# ── 系统 / 编辑器 ──
+.DS_Store
+Thumbs.db

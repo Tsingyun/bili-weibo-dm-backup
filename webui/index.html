@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>私信备份 · 本地控制台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="dot"></span>
+    <b>私信备份</b>
+    <span class="sub">微博 / B站 · 本地控制台</span>
+  </div>
+  <div class="top-right">
+    <span id="envChips" class="chips"></span>
+    <a class="btn ghost" href="/viewer" target="_blank" rel="noopener">打开查看页 ↗</a>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="steps" id="stepNav">
+    <button class="step" data-go="1"><i>1</i><span>环境检查</span></button>
+    <button class="step" data-go="2"><i>2</i><span>授权登录</span></button>
+    <button class="step" data-go="3"><i>3</i><span>选择会话</span></button>
+    <button class="step" data-go="4"><i>4</i><span>选择范围并备份</span></button>
+    <button class="step" data-go="5"><i>5</i><span>加载他人备份</span></button>
+    <button class="step" data-go="6"><i>6</i><span>导出</span></button>
+    <button class="step" data-go="7"><i>7</i><span>查看与维护</span></button>
+    <div class="steps-foot">
+      <div class="mini" id="rootPath">—</div>
+      <div class="mini" id="svcAddr">—</div>
+      <div class="mini dim">只监听 127.0.0.1，数据不出本机</div>
+    </div>
+  </nav>
+
+  <main class="panes">
+
+    <!-- ============ 1 环境检查 ============ -->
+    <section class="pane" data-pane="1">
+      <h1>环境检查</h1>
+      <p class="lead">先确认这台电脑上「用得上的东西」都齐了。缺什么下面会直接说，不影响的部分会自动跳过。</p>
+      <div class="grid" id="envGrid"></div>
+      <div class="actions">
+        <button class="btn" id="btnRefresh">重新检查</button>
+        <button class="btn ghost" id="btnNext1">下一步：授权登录 →</button>
+      </div>
+    </section>
+
+    <!-- ============ 2 授权登录 ============ -->
+    <section class="pane" data-pane="2" hidden>
+      <h1>授权登录</h1>
+      <p class="lead">
+        点一下按钮，程序会用**它自己的专用浏览器窗口**打开登录页；你在那个窗口里扫码或输密码。
+        Cookie 只会留在本机（<code>&lt;数据目录&gt;/cookie_header.txt</code>），程序从不接触你的账号密码。
+      </p>
+      <div class="cards" id="loginCards"></div>
+      <p class="kv" id="loginHint" hidden></p>
+      <div class="actions">
+        <button class="btn" id="btnRefreshLogin">刷新登录状态</button>
+        <button class="btn ghost" id="btnNext2">下一步：选择会话 →</button>
+      </div>
+
+      <!-- 兜底路线：自动登录（专用浏览器窗口 + 平台接口）走不通时，手动粘 Cookie。
+           存的位置和自动登录一模一样，后面备份的用法也一模一样。 -->
+      <details class="box">
+        <summary>自动登录走不通？手动把 Cookie 贴进来（含逐步教程）</summary>
+        <div class="form">
+          <p class="kv">
+            这条路用在「专用浏览器窗口起不来」或「本机连不上平台接口（一直显示『暂时无法校验』）」的时候。
+            你用自己常用的浏览器登录一次，把 Cookie 复制出来贴进下面 —— 效果和自动登录完全一样。
+          </p>
+          <ol class="kv" style="padding-left:22px">
+            <li>用你常用的浏览器打开登录页并正常登录：
+              微博 <code>https://api.weibo.com/chat</code> ；B站 <code>https://message.bilibili.com/</code></li>
+            <li>登录成功后按 <code>F12</code> 打开开发者工具，顶部选 <b>Network / 网络</b>。</li>
+            <li>按 <code>F5</code> 刷新一次，在请求列表里点<b>最上面那条</b>文档请求。</li>
+            <li>右侧 <b>Headers / 标头</b> → 往下找 <b>Request Headers / 请求标头</b> 里的
+              <code>cookie: ...</code> 一行 → 右键 → <b>Copy value / 复制值</b>。</li>
+            <li>整串粘进下面的框（微博必须含 <code>SUB=</code>，B站必须含 <code>SESSDATA=</code>），点「保存并校验」。</li>
+          </ol>
+          <p class="kv dim">⚠ Cookie 等同于账号密码：别发给别人、别贴在群里。它只会写进本机的
+            <code>&lt;数据目录&gt;/cookie_header.txt</code>，程序不会外传。</p>
+          <label>会话
+            <select id="mc_session"></select>
+          </label>
+          <label>Cookie 串
+            <textarea id="mc_cookie" rows="4" placeholder="把一整串 cookie 粘在这里，形如：SUB=...; SUBP=...; ..." autocomplete="off"></textarea>
+          </label>
+          <div class="actions">
+            <button class="btn" id="btnSaveCookie">保存并校验</button>
+            <span class="kv" id="mcResult"></span>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ 3 选择会话 ============ -->
+    <section class="pane" data-pane="3" hidden>
+      <h1>选择会话</h1>
+      <p class="lead">「会话」= 你要备份的那一位。填对方的数字 ID（uid），别填昵称。</p>
+      <div class="table-wrap"><table id="sessTable"></table></div>
+      <details class="box">
+        <summary>新增 / 修改一个会话</summary>
+        <div class="form">
+          <label>会话 key<input id="f_key" placeholder="只能字母数字下划线，例如 yami" autocomplete="off"></label>
+          <label>显示名称<input id="f_label" placeholder="例如 Yami"></label>
+          <label>平台
+            <select id="f_platform"><option value="weibo">微博</option><option value="bili">B站</option></select>
+          </label>
+          <label>对方的 uid<input id="f_peeruid" placeholder="微博：主页 weibo.com/u/<这串数字>；B站：space.bilibili.com/<这串数字>"></label>
+          <label>对方昵称（可留空）<input id="f_peername" placeholder="会自动从接口取"></label>
+          <label>数据目录（可留空）<input id="f_dir" placeholder="留空则默认 data_&lt;key&gt;"></label>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btnSaveSess">保存会话</button>
+          <button class="btn ghost" id="btnClearSess">清空表单</button>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ 4 选择范围并备份 ============ -->
+    <section class="pane" data-pane="4" hidden>
+      <h1>选择范围并备份</h1>
+      <p class="lead">
+        抓多少、要不要图片索引，都在这里定。开始后下方会实时打印日志。
+        勾了多个平台也没关系：会<b>一个跑完自动接着跑下一个</b>
+        （两个同时跑会抢浏览器的调试端口），日志连着打在一起。
+      </p>
+      <div class="box">
+        <div class="row">
+          <label class="chk"><input type="checkbox" class="pick" data-key="weibo" checked> 微博</label>
+          <label class="chk"><input type="checkbox" class="pick" data-key="bili" checked> B站</label>
+        </div>
+        <div class="form">
+          <label>抓取模式
+            <select id="f_mode">
+              <option value="incr">增量（只补新的，最快）</option>
+              <option value="full">全量（把历史翻一遍，较慢）</option>
+              <option value="rebuild">全量重建（按当前规则重抓，改过规则才用）</option>
+            </select>
+          </label>
+          <label>起始日期（可留空 = 能翻多远翻多远）<input id="f_since" type="date"></label>
+          <label>结束日期（可留空）<input id="f_until" type="date"></label>
+        </div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="f_noimg"> 只抓文字，不下载图片（快很多）</label>
+          <label class="chk"><input type="checkbox" id="f_compress"> 顺带把图片压成 WebP（不可逆）</label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="btnFetch">开始备份</button>
+          <button class="btn ghost" id="btnStop">停止</button>
+        </div>
+      </div>
+      <div class="box">
+        <div class="log-head">
+          <b id="logTitle">运行日志</b>
+          <span class="dim" id="logStat">空闲</span>
+        </div>
+        <pre class="log" id="log">（还没有开始）</pre>
+      </div>
+    </section>
+
+    <!-- ============ 5 加载他人备份 ============ -->
+    <section class="pane" data-pane="5" hidden>
+      <h1>加载私信内容（他人分享的备份）</h1>
+      <p class="lead">
+        别人把备份压缩包发给你，拖进来就能看。导入的内容是**只读**的，
+        只会出现在「查看页」里，永远不会被抓取流程碰到。
+      </p>
+      <div class="drop" id="dropZone">
+        <div class="drop-in">
+          <b>把 zip 拖到这里</b>
+          <span class="dim">或</span>
+          <input id="f_importPath" placeholder="直接填文件 / 文件夹路径，例如 D:\朋友发我的\dm-export_all_20260921.zip">
+          <button class="btn" id="btnImportPath">用这个路径加载</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="impTable"></table></div>
+    </section>
+
+    <!-- ============ 6 导出 ============ -->
+    <section class="pane" data-pane="6" hidden>
+      <h1>导出</h1>
+      <p class="lead">选会话、选时间范围、选格式。可以先「预览 20 条」确认口径对不对，再正式导出。</p>
+      <div class="box">
+        <div class="row" id="exportSessions"></div>
+        <div class="form">
+          <label>起始日期<input id="e_since" type="date"></label>
+          <label>结束日期<input id="e_until" type="date"></label>
+          <label>最多条数（留空 = 全部）<input id="e_limit" type="number" min="1" placeholder="例如 2000"></label>
+          <label>格式
+            <select id="e_format"></select>
+          </label>
+        </div>
+        <div class="row" id="exportKinds"></div>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="e_mask"> 手机号 / 邮箱 / 身份证等打码</label>
+          <label class="chk"><input type="checkbox" id="e_images" checked> 导出时带上图片</label>
+          <label class="chk"><input type="checkbox" id="e_ocr" checked> 带上图内文字</label>
+          <label class="chk"><input type="checkbox" id="e_vlm" checked> 带上图片描述</label>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btnPreview">预览 20 条</button>
+          <button class="btn primary" id="btnExport">开始导出</button>
+        </div>
+      </div>
+      <div class="box" id="previewBox" hidden>
+        <div class="log-head"><b>预览</b><span class="dim" id="previewStat"></span></div>
+        <div id="previewList" class="preview"></div>
+      </div>
+      <div class="box">
+        <div class="log-head"><b>导出结果</b><span class="dim">文件都在 <code>exports/</code> 目录</span></div>
+        <div class="table-wrap"><table id="expTable"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ 7 查看与维护 ============ -->
+    <section class="pane" data-pane="7" hidden>
+      <h1>查看与维护</h1>
+      <p class="lead">看记录用「查看页」；下面这些是单个动作，想单独跑哪一步就跑哪一步。</p>
+      <div class="box">
+        <div class="actions">
+          <a class="btn primary" href="/viewer" target="_blank" rel="noopener">打开查看备份 ↗</a>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="runTable"></table></div>
+      <div class="box">
+        <div class="log-head"><b>最近的任务</b><span class="dim" id="jobsStat">—</span></div>
+        <div class="table-wrap"><table id="jobsTable"></table></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

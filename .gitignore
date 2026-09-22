@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────
+# 隐私红线：下面这些含「真实私信内容」或「登录凭据」，一律不入库。
+# 项目约定（见 使用说明.md · 三、技术说明）：
+#   所有数据只存在本机，不上传任何地方；
+#   cookie_header.txt 等同账号密码，绝不分享。
+# ─────────────────────────────────────────────────────────────
+
+# 私信数据：messages / 图片 / OCR / VLM 索引 + 登录 Cookie
+/data/
+/bili/
+
+# 私信全文检索库（SQLite FTS5）
+/search/
+
+# 导出的私信 JSONL 与表情包
+/exports/
+
+# ── WebUI（2026-09-21）──
+# 待导入的压缩包 + 已导入的他人备份：里面同样是**别人的真实私信内容**，
+# 属于同一道隐私红线，绝不能跟着代码一起推上去。
+/imports/
+/imported/
+# WebUI 自己的状态（上次抓取/导出时间等），本机运行痕迹，不入库
+/.webui/
+
+# 索引快照（本机备份，由 scripts/snapshot.mjs 生成）
+/snapshots/
+
+# ── 会话清单（2026-09-22 补）──
+# sessions.json 是"用户必须自己填"的配置，**填过真实 uid / 昵称之后它就是个人身份数据**；
+# 仓库里不预置，由 scripts/_skill/sessions.template.json 复制而来（scripts/init.mjs 会自动做）。
+# ⚠ 以前只忽略了生成物 /sessions.js，把源头漏了 —— 于是真实 uid 跟着代码进了公开仓库。
+/sessions.json
+# 可分享 Skill 的隐私补充词表：它既是黑名单，也是一份「本人标识」清单，不能公开
+/scripts/_skill/personal_tokens.local.txt
+
+# 专用浏览器登录态
+/.edge-profile/
+
+# OCR 的 Python 环境
+/.ocr-env/
+
+# ── 便携包内置运行时（2026-09-22 补）──
+# runtime\node\node.exe 是「便携一体包」自带的 Node（约 83 MB），
+# 由 scripts/pack_portable.mjs 打进 dist 产物。仓库里永远不该有它：
+# 体积大、而且和「让用户自己装 Node」的文档口径冲突。
+/runtime/
+# 便携包 / 分享包的产物目录（默认落在工作区，不该入库）
+/dist/
+/dist-portable/
+
+# ── 截图：画面里就是真实聊天内容 ──
+/scripts/_explore/shots/
+# 验证脚本的临时目录
+/scripts/_explore/_tmp/
+# 开发脚本的依赖指针：一行**本机绝对路径**，只在自己机器上有效（见 _deps.mjs）
+/scripts/_explore/.pw-home
+# 若在仓库里 npm i 过（为了跑 _explore 下的开发脚本），依赖目录同样不入库
+/node_modules/
+
+# ── 生成物 ──
+# ⚠ .gitignore 不支持行尾注释：`/a.js # 说明` 会被当成一整个文件名，规则直接失效
+# sessions.js 由 scripts/build_sessions.mjs 从 sessions.json 生成
+/sessions.js
+*.db
+*.db-shm
+*.db-wal
+*.lock
+
+# Python 字节码（跑过 py_compile 或脚本后会产生，别入库）
+__pycache__/
+*.pyc
+
+# ── 系统 / 编辑器 ──
+.DS_Store
+Thumbs.db
+*.log
