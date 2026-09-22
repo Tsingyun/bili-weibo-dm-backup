@@ -16,13 +16,18 @@ $root = Split-Path -Parent $PSScriptRoot
 function Say($m) { Write-Host $m }
 
 function Find-Node {
-  # 顺序：PATH 上的 node 最优先（换台电脑也能用），再退回常见安装位置，
+  # 顺序刻意是「内置优先」：
+  #   · 便携包在 runtime\node\ 里自带一份运行时 —— 先用它，才谈得上
+  #     「下载即用」且版本可控（不受用户机器上装没装 Node / 装的是哪版影响）。
+  #   · 直接 clone 仓库跑的情况没有 runtime\，自然回退到系统 Node，行为不变。
+  $builtin = Join-Path $root 'runtime\node\node.exe'
+  if (Test-Path $builtin) { $script:NodeSource = '内置'; return $builtin }
   $cmd = Get-Command node -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
+  if ($cmd) { $script:NodeSource = '系统'; return $cmd.Source }
   $cands = @(
     'C:\Program Files\nodejs\node.exe'
   )
-  foreach ($c in $cands) { if (Test-Path $c) { return $c } }
+  foreach ($c in $cands) { if (Test-Path $c) { $script:NodeSource = '系统'; return $c } }
   return $null
 }
 
@@ -65,8 +70,16 @@ if ($major -lt 18) {
   exit 1
 }
 
-Say ('  Node      ' + $ver + '   ' + $node)
+Say ('  Node      ' + $ver + '（' + $NodeSource + '）   ' + $node)
 Say ('  工作区    ' + $root)
+# 中文/空格路径绝大多数情况能跑，但个别环节（浏览器调试端口、命令行传参）
+# 历史上真出过问题。这里**只提示不阻断** —— 阻断会把能用的用户挡在门外。
+if ($root -match '[^\x00-\x7F]' -or $root.Contains(' ')) {
+  Say ''
+  Say '  ⚠ 工作区路径里含有中文或空格。'
+  Say '    多数情况能正常跑；但万一后面卡住（尤其是登录或抓取那一步），'
+  Say '    把整个文件夹挪到 D:\dm-backup 这类纯英文、无空格的路径，再双击一次即可。'
+}
 Say ''
 Say '  正在启动本地服务，马上会自动打开浏览器…'
 Say '  ⚠ 这个窗口**不要关**：关掉它就等于关掉服务，网页会连不上。'

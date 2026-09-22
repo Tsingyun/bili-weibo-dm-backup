@@ -40,6 +40,15 @@
 # OCR 的 Python 环境
 /.ocr-env/
 
+# ── 便携包内置运行时（2026-09-22 补）──
+# runtime\node\node.exe 是「便携一体包」自带的 Node（约 83 MB），
+# 由 scripts/pack_portable.mjs 打进 dist 产物。仓库里永远不该有它：
+# 体积大、而且和「让用户自己装 Node」的文档口径冲突。
+/runtime/
+# 便携包 / 分享包的产物目录（默认落在工作区，不该入库）
+/dist/
+/dist-portable/
+
 # ── 截图：画面里就是真实聊天内容 ──
 /scripts/_explore/shots/
 # 验证脚本的临时目录

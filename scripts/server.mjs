@@ -46,6 +46,13 @@ const HOST = '127.0.0.1';
 const SELF = process.execPath;
 const S = (n) => path.join(ROOT, 'scripts', n);
 
+/* 运行环境来源。
+   便携包在 runtime\node\ 里自带一份运行时（启动器会优先用它），
+   这时界面要说清「不需要额外安装 Node」—— 新手最容易卡的就是这一步。
+   Windows 路径大小写不敏感，比较前统一转小写。 */
+const RUNTIME_DIR = path.join(ROOT, 'runtime', 'node');
+const BUILTIN_RUNTIME = path.dirname(SELF).toLowerCase() === RUNTIME_DIR.toLowerCase();
+
 /* ================================================================
    小工具
    ================================================================ */
@@ -383,6 +390,7 @@ async function buildState() {
     port: PORT,
     cdpPort: CDP_PORT,
     node: process.version,
+    runtime: { builtin: BUILTIN_RUNTIME, execPath: SELF },
     configError,
     env: {
       browser: browser || null,

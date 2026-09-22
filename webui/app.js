@@ -91,6 +91,9 @@ async function refreshState() {
   renderEnv(); renderLogin(); renderSessions(); renderImported();
   renderExportForm(); renderExports(); renderRunTable(); renderJobs();
   $('#rootPath').textContent = STATE.root;
+  // 真实端口要显眼：文档里写的是 8787，但被占用/被系统保留时服务会自己往后挪，
+  // 用户照着文档敲 8787 会连不上（本机实测过 8787 直接 EACCES）。
+  $('#svcAddr').textContent = '服务地址 http://127.0.0.1:' + STATE.port + '/';
 }
 
 function renderEnv() {
@@ -107,8 +110,24 @@ function renderEnv() {
     .map(([t, ok]) => `<span class="chip ${ok ? 'on' : 'off'}">${esc(t)}${ok ? '' : ' ✗'}</span>`)
     .join('');
 
+  // 便携包会自带 runtime\node\node.exe：新手最怕「是不是漏装了什么」，
+  // 所以第一张卡就直接给结论，而不是让他自己去猜 Node 是哪来的。
+  const rt = STATE.runtime || {};
+  const rtText = rt.builtin
+    ? '用包内自带的 Node ' + STATE.node + '（不用另外安装，也不写进系统环境）'
+    : '用系统已安装的 Node ' + STATE.node + '（本项目零第三方依赖，不需要 npm install）';
+
+  // 路径里的中文/空格不会让程序直接崩，但个别环节（浏览器调试端口、命令行传参）
+  // 历史上真出过问题 —— 提前提醒一次，别等卡住了才回头怀疑路径。
+  const pathBad = /[\u3400-\u9FFF\uF900-\uFAFF]/.test(STATE.root) || /\s/.test(STATE.root);
+  const pathText = pathBad
+    ? STATE.root + ' —— ⚠ 含中文或空格。多数情况能用；万一登录或抓取卡住，' +
+      '把整个文件夹挪到 D:\\dm-backup 这类纯英文、无空格的路径再试。'
+    : STATE.root + '（纯英文、无空格，最稳妥）';
+
   const items = [
-    ['Node.js', true, STATE.node + '（服务本身就在跑，肯定没问题）'],
+    ['运行环境', true, rtText],
+    ['工作区路径', !pathBad, pathText],
     ['Edge / Chrome', !!e.browser, e.browser || '没找到 —— 授权登录和抓取都需要它，装上 Edge 即可'],
     ['专用浏览器窗口', e.browserUp, e.browserUp ? '正在运行，调试端口 ' + STATE.cdpPort + ' 已就绪' : '还没启动（点「授权登录」会自己拉起来）'],
     ['OCR 环境（图内文字）', e.ocrReady, e.ocrReady ? e.ocrPython : '未安装 —— 双击「命令/图片与OCR/安装OCR环境.cmd」可启用；不装也不影响备份正文'],

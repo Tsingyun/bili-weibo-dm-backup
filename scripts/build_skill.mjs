@@ -49,7 +49,7 @@ const MANAGED_DIRS = ['scripts', '命令', 'assets', 'webui', 'cmd'];
  *   build_skill.mjs —— 构建器自己（引用了项目根，进包没意义）
  *   pack_share.mjs  —— 打分享包用的（同上）
  */
-const MAINTAINER_ONLY = new Set(['build_skill.mjs', 'pack_share.mjs']);
+const MAINTAINER_ONLY = new Set(['build_skill.mjs', 'pack_share.mjs', 'pack_portable.mjs']);
 
 /**
  * 本机私有文件（一律不进 Skill / 分享包）：
