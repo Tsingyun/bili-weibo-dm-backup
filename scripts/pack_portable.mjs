@@ -18,7 +18,12 @@
  *   node scripts/pack_portable.mjs                        # 输出到 <workspace>/dist/
  *   node scripts/pack_portable.mjs --no-runtime           # 不带 node.exe（包 <1MB，需用户自备 Node）
  *   node scripts/pack_portable.mjs --node D:\node.exe     # 指定要打进去的运行时
+ *   node scripts/pack_portable.mjs --runtime-license <路径>  # 覆盖 Node 许可证（默认取 node.exe 同目录的 LICENSE）
  *   node scripts/pack_portable.mjs --out D:\分享 --no-zip
+ *
+ * ⚠ 打完 node.exe 就**等于在分发 Node.js**：必须把 Node 自己的 LICENSE 一起带上
+ *   （MIT + 第三方许可聚合文本）。少了它，我们自己那行 MIT 写得再全也不合规 ——
+ *   所以本脚本找不到运行时的 LICENSE 时**直接拒绝打包**，不靠人记得。
  *
  * ⚠ 容器名一律 ASCII（zip 名与包内根目录）：
  *   解压时 Windows 资源管理器默认按**压缩包名**建文件夹 —— 如果包名是中文，
@@ -195,7 +200,9 @@ function writeStartHere(outDir) {
     ? `不用装任何东西
 ------------------------------------------------
 这个包里已经自带运行环境（runtime\\node\\node.exe），
-不会往系统里装东西，也不需要 npm install、不需要管理员权限。`
+不会往系统里装东西，也不需要 npm install、不需要管理员权限。
+
+（这份运行时就是 Node.js 官方程序，它的许可证一并放在 runtime\\node\\LICENSE。）`
     : `这个包没有自带运行环境
 ------------------------------------------------
 你需要先装 Node.js 22 或更高版本（https://nodejs.org/ 下 LTS 版），
@@ -281,11 +288,24 @@ function main() {
   }
 
   // 1) 运行时
+  //    ⚠ 分发 node.exe 就等于分发 Node.js 本身，**必须**把它的许可证一起带上：
+  //      Node 是 MIT + 一批第三方许可的聚合文本（约 145 KB），
+  //      MIT 要求「版权声明随副本分发」—— 不带上就是不合规，哪怕我们自己那行 MIT 写了也没用。
   let nodeExe = null;
+  let nodeLicense = null;
   if (WITH_RUNTIME) {
     nodeExe = path.resolve(val('--node', process.execPath));
     if (!fs.existsSync(nodeExe)) {
       console.error('[×] 找不到要打进去的运行时：' + nodeExe);
+      return 1;
+    }
+    // 默认取 node.exe 同目录的 LICENSE（官方发行包就是这个结构）
+    nodeLicense = path.resolve(val('--runtime-license', path.join(path.dirname(nodeExe), 'LICENSE')));
+    if (!fs.existsSync(nodeLicense)) {
+      console.error('[×] 找不到运行时的许可证文件，拒绝打包（分发二进制不带许可证不合规）：');
+      console.error('    期望位置：' + nodeLicense);
+      console.error('    修法：node scripts/pack_portable.mjs --runtime-license <Node 官方包里的 LICENSE 路径>');
+      console.error('    或把官方发行包里的 LICENSE 放回 node.exe 同目录再打包。');
       return 1;
     }
   }
@@ -305,9 +325,13 @@ function main() {
     const dst = path.join(PKG_DIR, 'runtime', 'node', 'node.exe');
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.copyFileSync(nodeExe, dst);
+    // Node 自己的许可证必须紧挨着 node.exe 放，用户/法务一眼能找到
+    fs.copyFileSync(nodeLicense, path.join(PKG_DIR, 'runtime', 'node', 'LICENSE'));
     const mb = (fs.statSync(dst).size / 1048576).toFixed(1);
     console.log('[3/5] 已内置运行时：' + dst + '（' + mb + ' MB）');
     console.log('      版本 ' + process.version + ' · 来自 ' + nodeExe);
+    console.log('      已随包附上 Node 许可证 runtime/node/LICENSE（' +
+      (fs.statSync(nodeLicense).size / 1024).toFixed(0) + ' KB）');
   } else {
     console.log('[3/5] 跳过运行时（--no-runtime）');
   }

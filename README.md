@@ -17,6 +17,9 @@
 
 **下载便携一体包 → 解压 → 双击根目录的 `启动.cmd` → 浏览器自动打开界面，剩下全在界面里点。**
 
+> **直接下载：** [dm-backup-portable.zip](https://github.com/Tsingyun/bili-weibo-dm-backup/releases/latest/download/dm-backup-portable.zip)
+> （约 33 MB · Windows 10/11）—— 这个链接永远指向最新一版。
+
 - 包里**自带 Node 运行时**（`runtime\node\node.exe`），不用另外装任何东西，也不需要管理员权限。
 - 解压到**纯英文、无空格**的路径（比如 `D:\dm-backup`）。
 - 首次打开可能弹「Windows 已保护你的电脑」→ 点「更多信息」→「仍要运行」。
@@ -232,6 +235,9 @@ snapshots/       索引快照
 ## 许可证
 
 **[MIT](LICENSE)** —— 你可以随便使用、修改、分发，包括商用，只要保留版权声明。
+
+> 便携一体包里还打包了 **Node.js 官方运行时**，它自己的许可证（MIT + 第三方聚合文本）
+> 随包放在 `runtime/node/LICENSE` —— 分发二进制就得连许可证一起带上。
 
 不过请务必读一下 **[使用限制.md](使用限制.md)**：
 
