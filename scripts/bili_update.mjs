@@ -171,7 +171,7 @@ try {
 }
 if (!COOKIE) {
   console.error('[×] 没有任何可用的 B站 Cookie。');
-  console.error('    请运行「更新B站备份.cmd」，在弹出的浏览器窗口里扫码登录 B站，然后重试。');
+  console.error('    请运行「命令/备份与更新/更新B站备份.cmd」，在弹出的浏览器窗口里扫码登录 B站，然后重试。');
   process.exit(2);
 }
 

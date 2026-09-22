@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": 1,
-    "note": "会话清单 —— 全项目唯一需要你改的文件。填完 peer.uid / name 后运行「生成会话清单.cmd」，或直接跑 node scripts/build_sessions.mjs --mkdir。",
+    "note": "会话清单 —— 全项目唯一需要你改的文件。填完 peer.uid / name 后运行「命令/配置与定时/生成会话清单.cmd」，或直接跑 node scripts/build_sessions.mjs --mkdir。",
     "schema": {
       "key": "会话标识，只用字母/数字/下划线，全局唯一；也是更新脚本 --session 的值",
       "label": "顶部切换条上的短标签，如「微博」「B站」",
@@ -37,7 +37,7 @@
         "name": ""
       },
       "autoReply": "",
-      "empty": "未找到数据文件 <code>data/messages.js</code><br>请先运行一次「更新备份.cmd」"
+      "empty": "未找到数据文件 <code>data/messages.js</code><br>请先运行一次「命令/备份与更新/更新备份.cmd」"
     },
     {
       "key": "bili",
@@ -54,7 +54,7 @@
         "name": ""
       },
       "autoReply": "",
-      "empty": "未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「更新B站备份.cmd」（首次需要在弹出的浏览器窗口里扫码登录 B站）"
+      "empty": "未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「命令/备份与更新/更新B站备份.cmd」（首次需要在弹出的浏览器窗口里扫码登录 B站）"
     }
   ]
 }

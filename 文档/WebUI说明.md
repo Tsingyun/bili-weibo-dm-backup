@@ -7,7 +7,7 @@
 
 ## 一、它是什么
 
-一个**只在本机跑**的小网页：双击 `启动WebUI.cmd` → 浏览器打开 `http://127.0.0.1:8787/`
+一个**只在本机跑**的小网页：双击 `命令/查看与导出/启动WebUI.cmd` → 浏览器打开 `http://127.0.0.1:8787/`
 → 7 步引导（环境检查 → 授权登录 → 选会话 → 选范围备份 → 加载他人备份 → 导出 → 查看与维护）。
 
 覆盖三件事：
@@ -337,7 +337,7 @@ for (const s of chosen) { jobs.push(startJob(...)); break; }   // ← 注释写�
 | 8 | 时间范围抓取 | 给 `update.mjs` / `bili_update.mjs` 加 `--since/--until` | 早于 `since` 就停止翻页 |
 | 9 | 服务端 | `server.mjs` | 守卫 → 静态 → 只读接口 → 写接口 |
 | 10 | 前端 | `webui/` 三件套 | 引导分步；`api()` 统一带头 |
-| 11 | 启动器 | `webui.ps1` + `启动WebUI.cmd` | `.ps1` 必须 **UTF-8 带 BOM**；`.cmd` 必须**纯 ASCII** |
+| 11 | 启动器 | `webui.ps1` + `命令/查看与导出/启动WebUI.cmd` | `.ps1` 必须 **UTF-8 带 BOM**；`.cmd` 必须**纯 ASCII** |
 | 12 | 打通分享 | 改 `build_skill.mjs` / `init.mjs` | 必须带上 `scripts/lib/` 和 `webui/`（见下） |
 | 13 | 验证 | `scripts/_explore/verify_webui.mjs` | 真起服务、真发请求，129 条断言 |
 

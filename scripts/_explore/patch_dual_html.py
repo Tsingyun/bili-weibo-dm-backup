@@ -63,7 +63,7 @@ sub('''<script src="data/vlm.js" onerror="window.__vlmMissing=1"></script>''',
 sub('''(function(){
   var D = window.DM_DATA;
   if(!D){ document.getElementById('chat').innerHTML =
-      '<div class="empty">未找到数据文件 <code>data/messages.js</code><br>请先运行一次「更新备份.cmd」</div>'; return; }
+      '<div class="empty">未找到数据文件 <code>data/messages.js</code><br>请先运行一次「命令/备份与更新/更新备份.cmd」</div>'; return; }
 
   var META = D.meta || {}, ALL = D.messages || [];
   var CHUNK = 150;
@@ -80,13 +80,13 @@ var SOURCES = {
     key:'weibo', label:'微博', title:'微博私信备份',
     data: window.DM_DATA, faces: window.DM_FACES, ocr: window.DM_OCR, vlm: window.DM_VLM,
     autoReply: '',
-    empty: '未找到数据文件 <code>data/messages.js</code><br>请先运行一次「更新备份.cmd」',
+    empty: '未找到数据文件 <code>data/messages.js</code><br>请先运行一次「命令/备份与更新/更新备份.cmd」',
   },
   bili: {
     key:'bili', label:'B站', title:'B站私信备份',
     data: window.DM_DATA_B, faces: window.DM_FACES_B, ocr: window.DM_OCR_B, vlm: window.DM_VLM_B,
     autoReply: '',
-    empty: '未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「更新B站备份.cmd」' +
+    empty: '未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「命令/备份与更新/更新B站备份.cmd」' +
            '（首次需要在弹出的浏览器窗口里扫码登录 B站）',
   },
 };

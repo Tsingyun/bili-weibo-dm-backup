@@ -31,7 +31,7 @@ function render(list) {
   }));
   const head = [
     '/* 本文件由 scripts/build_sessions.mjs 从项目根的 sessions.json 自动生成。',
-    '   不要手改 —— 改 sessions.json 后重新运行「生成会话清单.cmd」。',
+    '   不要手改 —— 改 sessions.json 后重新运行「命令/配置与定时/生成会话清单.cmd」。',
     '   页面读不到本文件时会用内置的「微博 / B站」兜底，不会打不开。 */',
     '',
   ].join('\n');
@@ -67,7 +67,7 @@ function main() {
       console.log('[✓] sessions.js 与 sessions.json 一致（' + list.length + ' 个会话）');
       return 0;
     }
-    console.log('[×] sessions.js 已过期：请运行「生成会话清单.cmd」重新生成');
+    console.log('[×] sessions.js 已过期：请运行「命令/配置与定时/生成会话清单.cmd」重新生成');
     return 1;
   }
 

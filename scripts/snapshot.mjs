@@ -154,7 +154,7 @@ function make(sessionArg, note) {
 function list() {
   const all = allSnapshots();
   if (!all.length) {
-    log('还没有任何快照。运行「索引快照.cmd」或 node scripts/snapshot.mjs --make 生成。');
+    log('还没有任何快照。运行「命令/查看与导出/索引快照.cmd」或 node scripts/snapshot.mjs --make 生成。');
     return 0;
   }
   log(`共 ${all.length} 份快照（新→旧）：`);

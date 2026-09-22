@@ -27,7 +27,7 @@ const chk = (ok, name, detail = '') => {
 
 // 先确认真实数据在，否则报错退出（避免「假通过」）
 const MJ = path.join(ROOT, 'bili', 'messages.json');
-if (!fs.existsSync(MJ)) { console.error('[×] 没有 bili/messages.json，先跑一次「更新B站备份.cmd」'); process.exit(2); }
+if (!fs.existsSync(MJ)) { console.error('[×] 没有 bili/messages.json，先跑一次「命令/备份与更新/更新B站备份.cmd」'); process.exit(2); }
 const REAL = JSON.parse(fs.readFileSync(MJ, 'utf8'));
 console.log('  真实数据：' + REAL.length + ' 条消息');
 

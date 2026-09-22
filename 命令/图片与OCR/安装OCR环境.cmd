@@ -3,7 +3,14 @@ chcp 65001 >nul
 setlocal
 title 安装图片识别环境
 
-set "ROOT=%~dp0"
+rem 本文件在「命令\图片与OCR\」下，项目根在两级之上。
+cd /d "%~dp0..\.."
+if not exist "scripts\" (
+  echo   [错误] 没找到项目根目录 —— 请不要单独移动本文件，放回 命令\图片与OCR\ 再试。
+  pause
+  exit /b 1
+)
+set "ROOT=%CD%\"
 set "ENV=%ROOT%.ocr-env"
 set "DATA=%ROOT%data"
 set "PY310=%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
@@ -74,7 +81,7 @@ echo.
 if not exist "%DATA%\glm_key.txt" (
   echo   [提示] 想在「查看备份.html」里搜「猫」「舞台」这类照片内容，
   echo          可把智谱 API Key 填进 data\glm_key.txt，
-  echo          再运行「更新备份.cmd」（免费模型，只上传没有文字的照片）。
+  echo          再运行「命令/备份与更新/更新备份.cmd」（免费模型，只上传没有文字的照片）。
   goto done
 )
 
@@ -96,7 +103,7 @@ echo.
 echo  ============================================================
 echo   完成。使用方式：
 echo     - 在「查看备份.html」搜索框直接搜图片里的文字与内容描述
-echo     - 改 Key 或删索引：运行「卸载OCR环境.cmd」
+echo     - 改 Key 或删索引：运行「命令/图片与OCR/卸载OCR环境.cmd」
 echo  ============================================================
 echo.
 pause

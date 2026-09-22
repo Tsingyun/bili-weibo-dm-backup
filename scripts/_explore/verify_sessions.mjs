@@ -28,7 +28,7 @@ function throws(fn) {
 }
 
 const NODE = process.execPath;
-/* 测试用 Python：优先环境变量；否则用项目自带的 OCR 环境（「安装OCR环境.cmd」生成）；
+/* 测试用 Python：优先环境变量；否则用项目自带的 OCR 环境（「命令/图片与OCR/安装OCR环境.cmd」生成）；
    再退回 PATH 上的 python。 */
 const PY = process.env.DM_TEST_PYTHON ||
   [path.join(ROOT, '.ocr-env', 'Scripts', 'python.exe'),
@@ -54,8 +54,8 @@ chk('两个都是 builtin（页里有静态 script 标签）', W.builtin === tru
 chk('builtin 会话不带 files（页面不用动态注入）', W.files === null && B.files === null);
 chk('weibo skip 含 avatar_', W.skip.includes('avatar_'));
 chk('bili skip 用 face_ 前缀', B.skip.includes('face_'));
-chk('weibo empty 文案仍指向「更新备份.cmd」', /更新备份\.cmd/.test(W.empty), W.empty);
-chk('bili empty 文案仍指向「更新B站备份.cmd」', /更新B站备份\.cmd/.test(B.empty));
+chk('weibo empty 文案仍指向「命令/备份与更新/更新备份.cmd」', /更新备份\.cmd/.test(W.empty), W.empty);
+chk('bili empty 文案仍指向「命令/备份与更新/更新B站备份.cmd」', /更新B站备份\.cmd/.test(B.empty));
 chk('platform 与 key 对应', W.platform === 'weibo' && B.platform === 'bili');
 
 // ============ 2. 替身清单：第三个会话 ============

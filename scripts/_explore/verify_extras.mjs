@@ -502,14 +502,34 @@ if (fs.existsSync(ps2)) {
   chk(/LogonType Interactive|Interactive/.test(t), '任务按「已登录时运行」注册（浏览器需要桌面会话）');
 }
 
-const cmds = ['注册定时更新.cmd', '取消定时更新.cmd', '导出JSONL.cmd', '搜索备份.cmd', '导出表情包.cmd', '重建搜索索引.cmd'];
-for (const c of cmds) {
-  const p = path.join(ROOT, c);
-  if (!fs.existsSync(p)) { chk(false, `${c} 存在`); continue; }
-  const buf = fs.readFileSync(p);
-  const ascii = buf.every((b) => b < 0x80);
-  chk(ascii, `${c} 是纯 ASCII（批处理不写中文）`, ascii ? '' : '含非 ASCII 字节');
+/* 启动器全部归到 命令/<分类>/ 之下（2026-09-22 重构）。这里同时钉住三件事：
+   ① 16 个一个不少、都在新路径上；② 除两个带中文输出的 OCR 环境脚本外，
+   其余必须是纯 ASCII 批处理（cmd.exe 按 OEM 代码页解析批处理，写中文会乱码）；
+   ③ 每个启动器都能自己回到项目根（%~dp0 挪位后最容易静默失败的地方）。 */
+const CMD_LAYOUT = {
+  '备份与更新': ['更新备份.cmd', '重建备份.cmd', '更新B站备份.cmd', '重建B站备份.cmd'],
+  '查看与导出': ['启动WebUI.cmd', '搜索备份.cmd', '重建搜索索引.cmd', '索引快照.cmd', '导出JSONL.cmd', '导出表情包.cmd'],
+  '图片与OCR': ['压缩图片.cmd', '安装OCR环境.cmd', '卸载OCR环境.cmd'],
+  '配置与定时': ['生成会话清单.cmd', '注册定时更新.cmd', '取消定时更新.cmd'],
+};
+const NON_ASCII_OK = new Set(['安装OCR环境.cmd', '卸载OCR环境.cmd']);
+let nCmd = 0;
+for (const [cat, names] of Object.entries(CMD_LAYOUT)) {
+  for (const c of names) {
+    nCmd++;
+    const p = path.join(ROOT, '命令', cat, c);
+    if (!fs.existsSync(p)) { chk(false, `命令/${cat}/${c} 存在`); continue; }
+    const buf = fs.readFileSync(p);
+    if (!NON_ASCII_OK.has(c)) {
+      const ascii = buf.every((b) => b < 0x80);
+      chk(ascii, `命令/${cat}/${c} 是纯 ASCII（批处理不写中文）`, ascii ? '' : '含非 ASCII 字节');
+    }
+    // 挪进子目录后必须自己回到项目根，否则 scripts\ 找不到 → 双击闪退
+    chk(buf.toString('utf8').includes('cd /d "%~dp0..\\.."'),
+      `命令/${cat}/${c} 自己回到项目根`);
+  }
 }
+chk(nCmd === 16, `启动器共 16 个（实际 ${nCmd}）`);
 
 /* ============================================================
    6. P0-2 快照 / P0-3 体检 仍可用

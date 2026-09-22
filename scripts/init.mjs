@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 
 const SKILL_ROOT = path.resolve(import.meta.dirname, '..');
 const ASSETS = path.join(SKILL_ROOT, 'assets');
-const CMDDIR = path.join(SKILL_ROOT, 'cmd');
+const CMDDIR = path.join(SKILL_ROOT, '命令');   // 启动器按用途分在 命令/<分类>/
 const SCRIPTS = path.join(SKILL_ROOT, 'scripts');
 
 const ARGS = process.argv.slice(2);
@@ -86,17 +86,20 @@ function main() {
   }
   say('      共 ' + nScript + ' 个脚本');
 
-  // 3) 双击启动器
+  // 3) 双击启动器（包内按用途分在 命令/<分类>/，原样铺过去 —— 目标项目里也是这个结构）
   say('[3/6] 放置双击启动器…');
   let nCmd = 0;
-  if (fs.existsSync(CMDDIR)) {
-    for (const name of fs.readdirSync(CMDDIR)) {
+  function copyCmdTree(srcDir, relDir) {
+    for (const name of fs.readdirSync(srcDir)) {
+      const full = path.join(srcDir, name);
+      if (fs.statSync(full).isDirectory()) { copyCmdTree(full, path.join(relDir, name)); continue; }
       if (!name.toLowerCase().endsWith('.cmd')) continue;
-      copyIfNew(path.join(CMDDIR, name), path.join(TARGET, name), { force: FORCE });
+      copyIfNew(full, path.join(TARGET, relDir, name), { force: FORCE });
       nCmd++;
     }
   }
-  say('      共 ' + nCmd + ' 个启动器');
+  if (fs.existsSync(CMDDIR)) copyCmdTree(CMDDIR, '命令');
+  say('      共 ' + nCmd + ' 个启动器（命令/<分类>/）');
 
   // 4) WebUI 前端 + 它要用到的目录
   say('[4/6] 放置 WebUI…');
@@ -141,10 +144,11 @@ function main() {
   say('      把每个会话的 peer.uid / peer.name 填成「你要备份的那个人的」；');
   say('      微博 uid 看主页地址 weibo.com/u/<这串数字>');
   say('      B站  uid 看空间地址 space.bilibili.com/<这串数字>');
-  say('   2. 双击「生成会话清单.cmd」');
-  say('   3. 双击「启动WebUI.cmd」—— 浏览器里会开一个引导界面，');
+  say('   2. 双击「命令/配置与定时/生成会话清单.cmd」');
+  say('   3. 双击「命令/查看与导出/启动WebUI.cmd」—— 浏览器里会开一个引导界面，');
   say('      照着上面 1→7 步点就行（授权登录 → 选会话 → 选范围 → 备份 → 导出）。');
-  say('      习惯命令行的也可以走老路：双击「更新备份.cmd」（B站用「更新B站备份.cmd」）。');
+  say('      习惯命令行的也可以走老路：双击「命令/备份与更新/更新备份.cmd」');
+  say('      （B站用「命令/备份与更新/更新B站备份.cmd」）。');
   say('   4. 备份完双击「查看备份.html」翻聊天记录。');
   say('------------------------------------------');
   say('');

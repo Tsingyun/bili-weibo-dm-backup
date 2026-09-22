@@ -5,7 +5,7 @@
 # 任务内容是调用 scripts\auto_update.ps1（静默跑完自己退出，日志在 logs\）。
 #
 # ⚠ 注册计划任务属于「改系统状态」，有的受控环境（沙箱 / 只读磁盘）会直接拦掉。
-#     所以最稳的做法：由你双击一次「注册定时更新.cmd」手动注册。
+#     所以最稳的做法：由你双击一次「命令/配置与定时/注册定时更新.cmd」手动注册。
 #     （如果之前已经用命令行注册成功过，就不用再双击了：双击 -Status 可查看。
 #      实测本机 2026-09-21 用命令行注册是成功的。）
 #
@@ -72,7 +72,7 @@ function Show-Status {
   $t = Get-Task
   if (-not $t) {
     Write-Host "当前没有名为「$TaskName」的计划任务。"
-    Write-Host "双击「注册定时更新.cmd」可以创建。"
+    Write-Host "双击「命令/配置与定时/注册定时更新.cmd」可以创建。"
     return
   }
   $info = Get-ScheduledTaskInfo -TaskName $TaskName
@@ -168,8 +168,8 @@ Info "执行：powershell.exe $argLine"
 Info "只在当前用户已登录时运行（抓取需要本机浏览器）"
 Info "日志目录：$root\logs"
 Info "想立刻试一次：powershell -ExecutionPolicy Bypass -File scripts\schedule_task.ps1 -RunNow"
-Info "想改成每天跑：注册定时更新.cmd -Daily -At 21:30"
-Info "改星期几 / 改时间：注册定时更新.cmd -DaysOfWeek Monday,Thursday -At 09:30"
-Info "不想用了：双击「取消定时更新.cmd」"
+Info "想改成每天跑：命令/配置与定时/注册定时更新.cmd -Daily -At 21:30"
+Info "改星期几 / 改时间：命令/配置与定时/注册定时更新.cmd -DaysOfWeek Monday,Thursday -At 09:30"
+Info "不想用了：双击「命令/配置与定时/取消定时更新.cmd」"
 Write-Host ""
 Show-Status

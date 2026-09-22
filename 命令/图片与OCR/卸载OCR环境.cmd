@@ -3,7 +3,14 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 title 卸载图片识别环境
 
-set "ROOT=%~dp0"
+rem 本文件在「命令\图片与OCR\」下，项目根在两级之上。
+cd /d "%~dp0..\.."
+if not exist "scripts\" (
+  echo   [错误] 没找到项目根目录 —— 请不要单独移动本文件，放回 命令\图片与OCR\ 再试。
+  pause
+  exit /b 1
+)
+set "ROOT=%CD%\"
 set "ENV=%ROOT%.ocr-env"
 set "DATA=%ROOT%data"
 

@@ -141,7 +141,7 @@ try {
 } catch {
   log('      未连接浏览器，沿用本地 Cookie');
 }
-if (!COOKIE) { console.error('[×] 没有任何可用 Cookie，请先运行「更新备份.cmd」。'); process.exit(2); }
+if (!COOKIE) { console.error('[×] 没有任何可用 Cookie，请先运行「命令/备份与更新/更新备份.cmd」。'); process.exit(2); }
 
 // ---------------- 2) 校验登录态 ----------------
 let selfUid = SELF_UID, selfName = SELF_NAME, selfAvatar = '', peerAvatar = '';

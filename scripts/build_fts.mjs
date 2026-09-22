@@ -54,7 +54,7 @@ if (has('--help') || has('-h')) {
   --info                打印库信息（会话、行数、体积、建立时间）
   --quiet
 
-  建完用 scripts/search.mjs 查询，或双击「搜索备份.cmd」。`);
+  建完用 scripts/search.mjs 查询，或双击「命令/查看与导出/搜索备份.cmd」。`);
   process.exit(0);
 }
 
@@ -295,6 +295,6 @@ const size = fs.statSync(DB_PATH).size;
 say('');
 say(`索引库：${path.relative(ROOT, DB_PATH)}（${(size / 1024 / 1024).toFixed(1)} MB，` +
     `${total.toLocaleString()} 条 / ${sessions.length} 个会话）`);
-say('查询：node scripts/search.mjs 关键词   （或双击「搜索备份.cmd」）');
+say('查询：node scripts/search.mjs 关键词   （或双击「命令/查看与导出/搜索备份.cmd」）');
 say('（纯本地 SQLite 文件，全程没有联网、没有上传）');
 db.close();

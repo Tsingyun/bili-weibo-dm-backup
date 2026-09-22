@@ -111,7 +111,7 @@ function renderEnv() {
     ['Node.js', true, STATE.node + '（服务本身就在跑，肯定没问题）'],
     ['Edge / Chrome', !!e.browser, e.browser || '没找到 —— 授权登录和抓取都需要它，装上 Edge 即可'],
     ['专用浏览器窗口', e.browserUp, e.browserUp ? '正在运行，调试端口 ' + STATE.cdpPort + ' 已就绪' : '还没启动（点「授权登录」会自己拉起来）'],
-    ['OCR 环境（图内文字）', e.ocrReady, e.ocrReady ? e.ocrPython : '未安装 —— 双击「安装OCR环境.cmd」可启用；不装也不影响备份正文'],
+    ['OCR 环境（图内文字）', e.ocrReady, e.ocrReady ? e.ocrPython : '未安装 —— 双击「命令/图片与OCR/安装OCR环境.cmd」可启用；不装也不影响备份正文'],
     ['图片描述 Key', e.glmKey, e.glmKey ? '已配置（只会把「没有文字的照片」发给免费模型）' : '未配置 —— 会跳过这一步，不影响其它功能'],
     ['会话配置', !STATE.configError, STATE.configError || '读取正常：' + STATE.manifest],
   ];

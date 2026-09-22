@@ -122,15 +122,15 @@
 
   <h3>逐项状态</h3>
   <ul>
-    <li><b>P0-1 图片转码压缩</b> ✅ 已完成 —— 微博 2,033 MB → 289 MB、B站 500 MB → 110 MB，<b>原图已全部删除</b>，三处索引（messages / ocr / vlm）的文件名键已同步迁移。工具：<code>scripts/compress_images.py</code> + <code>压缩图片.cmd</code>（五阶段：转码 → 迁移 → 校验 → 才删）。</li>
+    <li><b>P0-1 图片转码压缩</b> ✅ 已完成 —— 微博 2,033 MB → 289 MB、B站 500 MB → 110 MB，<b>原图已全部删除</b>，三处索引（messages / ocr / vlm）的文件名键已同步迁移。工具：<code>scripts/compress_images.py</code> + <code>命令/图片与OCR/压缩图片.cmd</code>（五阶段：转码 → 迁移 → 校验 → 才删）。</li>
     <li><b>P0-2 索引快照与回滚</b> ✅ 已完成 —— <code>scripts/snapshot.mjs</code>，<code>--make</code> / <code>--list</code> / <code>--restore</code>，保留最近 N 份。</li>
     <li><b>P0-3 一键体检</b> ✅ 已完成 —— <code>scripts/doctor.mjs</code>（支持 <code>--json</code>），覆盖图片引用 vs 磁盘、孤儿文件、索引覆盖率、残留锁、条数回退。当前：错误 0 · 提醒 0。</li>
-    <li><b>P0-4 定时自动更新</b> ✅ 已完成 —— <code>scripts/auto_update.ps1</code>（静默跑完整链路 + 日志轮转）+ <code>scripts/schedule_task.ps1</code>（Windows 计划任务，默认每周一 08:00，按「已登录时运行」注册）。<b>默认未注册</b>，双击 <code>注册定时更新.cmd</code> 一次即可。</li>
+    <li><b>P0-4 定时自动更新</b> ✅ 已完成 —— <code>scripts/auto_update.ps1</code>（静默跑完整链路 + 日志轮转）+ <code>scripts/schedule_task.ps1</code>（Windows 计划任务，默认每周一 08:00，按「已登录时运行」注册）。<b>默认未注册</b>，双击 <code>命令/配置与定时/注册定时更新.cmd</code> 一次即可。</li>
     <li><b>P1-5 高级筛选</b> ✅ 已完成 —— 发送者 / 类型 / 日期区间 / 正则 / 自动回复隐藏，共 7 个交互控件。</li>
     <li><b>P1-6 云端只读镜像</b> ⏸ <b>本次跳过</b> —— 属于云端能力，按要求不做。</li>
     <li><b>P1-7 导出 / 加密分享包</b> ✅ 已完成 —— 按范围导出 + AES-GCM 256 + PBKDF2(SHA-256, 20 万次) 加密包，只能由本页导入解密。</li>
     <li><b>P1-8 日历热力图</b> ✅ 已完成。</li>
-    <li><b>P1-9 多会话支持</b> ✅ 已完成 —— 唯一数据源 <code>sessions.json</code>，<code>生成会话清单.cmd</code> 生成页面用的 <code>sessions.js</code>；页面、更新脚本、索引脚本读同一份清单。</li>
+    <li><b>P1-9 多会话支持</b> ✅ 已完成 —— 唯一数据源 <code>sessions.json</code>，<code>命令/配置与定时/生成会话清单.cmd</code> 生成页面用的 <code>sessions.js</code>；页面、更新脚本、索引脚本读同一份清单。</li>
     <li><b>P1-10 结构化导出（JSONL）</b> ✅ 已完成 —— <code>scripts/export_jsonl.mjs</code>，实测 10,837 行（微博 7,925 + B站 2,912）/ 4.4 MB，支持时间窗、打码、瘦身。</li>
     <li><b>P2-11 回复时延 / 聊天节律</b> ✅ 已完成。</li>
     <li><b>P2-12 高频词 / 词云</b> ✅ 已完成。</li>
@@ -267,7 +267,7 @@
       <tr><td><code>data/images/</code></td><td class="num">2021 MB</td><td class="num">55.7%</td><td>微博图片 1018 张</td><td>需保留，<b>可压缩</b></td></tr>
       <tr><td><code>bili/images/</code></td><td class="num">449 MB</td><td class="num">12.4%</td><td>B站图片 427 张</td><td>需保留，<b>可压缩</b></td></tr>
       <tr><td><code>.edge-profile/</code></td><td class="num">739 MB</td><td class="num">20.4%</td><td>专用浏览器配置，<b>仅用来刷一次 Cookie</b></td><td><b>可删</b>（重登录即可）</td></tr>
-      <tr><td><code>.ocr-env/</code></td><td class="num">354 MB</td><td class="num">9.8%</td><td>OCR 的 Python 环境（模型本体仅 31 MB，其余是 onnxruntime 依赖）</td><td><b>可删</b>（跑「安装OCR环境.cmd」重建）</td></tr>
+      <tr><td><code>.ocr-env/</code></td><td class="num">354 MB</td><td class="num">9.8%</td><td>OCR 的 Python 环境（模型本体仅 31 MB，其余是 onnxruntime 依赖）</td><td><b>可删</b>（跑「命令/图片与OCR/安装OCR环境.cmd」重建）</td></tr>
       <tr><td><code>data/faces/</code> + <code>bili/faces/</code></td><td class="num">40 MB</td><td class="num">1.1%</td><td>官网表情图 1793 张</td><td>可重新下载</td></tr>
       <tr><td><code>scripts/</code></td><td class="num">11 MB</td><td class="num">0.3%</td><td>脚本</td><td>必须保留</td></tr>
       <tr><td>索引 json + js</td><td class="num">8.0 MB</td><td class="num">0.2%</td><td>消息 / OCR / VLM / 表情字典</td><td>必须保留</td></tr>

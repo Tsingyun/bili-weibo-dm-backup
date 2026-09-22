@@ -7,7 +7,15 @@ rem You can also pass options through:
 rem   this-file.cmd --session bili --sender peer --context 1
 rem All user-facing text is printed by scripts\search.mjs (UTF-8).
 chcp 65001 >nul
-cd /d "%~dp0"
+rem This launcher sits two levels below the project root.
+rem Keep it where it is: scripts\ is resolved relative to the root.
+cd /d "%~dp0..\.."
+if not exist "scripts\" (
+  echo [x] Project root not found under "%CD%".
+  echo     Do not move this .cmd file out of its folder; put it back and retry.
+  pause
+  exit /b 1
+)
 
 set "NODEEXE="
 where node >nul 2>nul && set "NODEEXE=node"

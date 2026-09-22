@@ -50,7 +50,7 @@
 | 能力 | 说明 |
 |---|---|
 | 本地全文检索 | SQLite **FTS5**（trigram），中文可搜；短词自动回退 LIKE |
-| 图片文字识别 | OCR 索引，搜到图里的文字（`安装OCR环境.cmd` 一键装） |
+| 图片文字识别 | OCR 索引，搜到图里的文字（`命令/图片与OCR/安装OCR环境.cmd` 一键装） |
 | 图片内容描述 | 视觉模型生成图片描述，支持「以图搜图 / 相似图」 |
 | 全部本地落盘 | 索引就是本机几个 `.json` + 一个 `.db`，可随时重建 |
 
@@ -109,25 +109,25 @@ cd bili-weibo-dm-backup
    copy scripts\_skill\sessions.template.json sessions.json
    ```
 
-   编辑 `sessions.json` 把 `peer.uid` 填上，然后双击 `生成会话清单.cmd`。
-2. **登录**：双击 `更新备份.cmd`（微博）或 `更新B站备份.cmd`（B站），
+   编辑 `sessions.json` 把 `peer.uid` 填上，然后双击 `命令/配置与定时/生成会话清单.cmd`。
+2. **登录**：双击 `命令/备份与更新/更新备份.cmd`（微博）或 `命令/备份与更新/更新B站备份.cmd`（B站），
    在弹出的浏览器窗口里正常登录一次，程序只把 Cookie 读回本地。
 3. **查看**：双击 `查看备份.html`。
 
-想用图形界面就双击 **`启动WebUI.cmd`**，跟着 7 步走，全程不用碰命令行。
+想用图形界面就双击 **`命令/查看与导出/启动WebUI.cmd`**，跟着 7 步走，全程不用碰命令行。
 
 ### 常用命令
 
 ```bash
-更新备份.cmd           # 微博 · 增量更新
-重建备份.cmd           # 微博 · 全量重建
-更新B站备份.cmd        # B站 · 增量更新
-重建搜索索引.cmd       # 数据更新后重建本地检索索引
-搜索备份.cmd           # 交互式全文检索
-导出JSONL.cmd          # 导出聊天记录
-压缩图片.cmd           # 图片转 WebP（会先确认一次 Y/N）
-注册定时更新.cmd       # 注册「每周一 08:00 自动更新」
-启动WebUI.cmd          # 图形界面
+命令/备份与更新/更新备份.cmd           # 微博 · 增量更新
+命令/备份与更新/重建备份.cmd           # 微博 · 全量重建
+命令/备份与更新/更新B站备份.cmd        # B站 · 增量更新
+命令/查看与导出/重建搜索索引.cmd       # 数据更新后重建本地检索索引
+命令/查看与导出/搜索备份.cmd           # 交互式全文检索
+命令/查看与导出/导出JSONL.cmd          # 导出聊天记录
+命令/图片与OCR/压缩图片.cmd           # 图片转 WebP（会先确认一次 Y/N）
+命令/配置与定时/注册定时更新.cmd       # 注册「每周一 08:00 自动更新」
+命令/查看与导出/启动WebUI.cmd          # 图形界面
 ```
 
 等价的 Node 命令（不依赖 `.cmd` 启动器）：
@@ -148,12 +148,11 @@ node scripts/server.mjs                            # 起 WebUI
 ```
 bili-weibo-dm-backup/
 ├─ 查看备份.html              离线查看页（双击打开）
-├─ 启动WebUI.cmd             图形界面入口
-├─ 更新备份.cmd / 重建备份.cmd          微博：增量 / 全量重建
-├─ 更新B站备份.cmd / 重建B站备份.cmd    B站：增量 / 全量重建
-├─ 压缩图片.cmd · 搜索备份.cmd · 导出JSONL.cmd · 导出表情包.cmd
-├─ 注册定时更新.cmd / 取消定时更新.cmd
-├─ 安装OCR环境.cmd / 卸载OCR环境.cmd   （可选功能）
+├─ 命令/                     全部启动器，按用途分 4 类
+│  ├─ 备份与更新/            更新备份 · 重建备份 · 更新B站备份 · 重建B站备份
+│  ├─ 查看与导出/            启动WebUI · 搜索备份 · 重建搜索索引 · 索引快照 · 导出JSONL · 导出表情包
+│  ├─ 图片与OCR/             压缩图片 · 安装OCR环境 · 卸载OCR环境
+│  └─ 配置与定时/            生成会话清单 · 注册定时更新 · 取消定时更新
 ├─ sessions.json             会话清单：要备份谁（唯一数据源）
 ├─ sessions.js               由上一行生成，供查看页读取
 ├─ scripts/                  Node 脚本（抓取 / 索引 / 导出 / 体检 / WebUI）
@@ -173,7 +172,9 @@ bili-weibo-dm-backup/
 ├─ search/                  本地检索库（SQLite）
 ├─ snapshots/               索引快照
 ├─ exports/ imports/ imported/   导出产物 / 待导入 / 已导入（只读）
-├─ 使用说明.md ...          各份文档（见文末索引）
+├─ 使用说明.md              完整使用手册（功能 / 口径 / 常见问题）
+├─ 文档/                    补充说明：定时自动更新 / WebUI / WebUI安全审计 /
+│                           图片搜索方案 / 备份与体检修复 / 登录校验排查 / 方案评估报告
 └─ .gitignore               ⚠ 私信数据与登录凭据一律不入库
 ```
 
@@ -214,7 +215,7 @@ bili-weibo-dm-backup/
 ```bash
 node scripts/run_pipeline.mjs --session weibo --mode incr
 node scripts/build_fts.mjs
-node scripts/search.mjs 关键词        # 也可以双击 搜索备份.cmd 用交互式
+node scripts/search.mjs 关键词        # 也可以双击 命令/查看与导出/搜索备份.cmd 用交互式
 ```
 
 ### 导出一段时间的聊天记录
@@ -266,7 +267,7 @@ node scripts/export_jsonl.mjs --session weibo --since 2026-06-01 --until 2026-06
 }
 ```
 
-改完双击 `生成会话清单.cmd` 重新生成 `sessions.js` 即可。
+改完双击 `命令/配置与定时/生成会话清单.cmd` 重新生成 `sessions.js` 即可。
 
 ---
 

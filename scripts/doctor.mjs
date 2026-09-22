@@ -261,7 +261,7 @@ function checkSession(s) {
       execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build_sessions.mjs'), '--check'],
         { cwd: ROOT, stdio: 'pipe' });
     } catch {
-      W('sessions.js 与 sessions.json 不一致（跑一次「生成会话清单.cmd」）');
+      W('sessions.js 与 sessions.json 不一致（跑一次「命令/配置与定时/生成会话清单.cmd」）');
     }
   }
 
@@ -394,7 +394,7 @@ function main() {
   if (snap) {
     console.log(`索引快照：${snap.count} 份，最近一份 ${snap.latest.id}（${snap.latest.session}）`);
   } else {
-    console.log('索引快照：还没有（建议先跑一次「索引快照.cmd」再动索引）');
+    console.log('索引快照：还没有（建议先跑一次「命令/查看与导出/索引快照.cmd」再动索引）');
   }
   console.log('');
   console.log(nErr ? '❌ 有错误需要处理（详细见上）'

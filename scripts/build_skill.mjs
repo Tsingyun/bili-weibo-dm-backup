@@ -40,7 +40,9 @@ const val = (f, d = '') => {
 const DEFAULT_OUT = path.join(os.homedir(), '.workbuddy', 'skills', 'dm-archive');
 
 /** 由本脚本托管（会被同步 / 清理陈旧文件）的子目录 */
-const MANAGED_DIRS = ['scripts', 'cmd', 'assets', 'webui'];
+/* ⚠ 'cmd' 是 2026-09-22 之前的历史目录名（启动器平铺在里面）。留在清单里是为了让
+   已安装的旧快照能把陈旧文件清掉；新结构统一走 '命令/<分类>/'。 */
+const MANAGED_DIRS = ['scripts', '命令', 'assets', 'webui', 'cmd'];
 
 /**
  * 只在维护者这边跑的脚本，不进 Skill：
@@ -48,6 +50,17 @@ const MANAGED_DIRS = ['scripts', 'cmd', 'assets', 'webui'];
  *   pack_share.mjs  —— 打分享包用的（同上）
  */
 const MAINTAINER_ONLY = new Set(['build_skill.mjs', 'pack_share.mjs']);
+
+/**
+ * 本机私有文件（一律不进 Skill / 分享包）：
+ *   · `*.local.txt`      —— 补充词表、个人 token 清单
+ *   · `*.local.*`        —— 同类私有配置
+ *   · `.pw-home` 等点开头 —— 依赖解析用的本机运行时候选
+ * 新增「只有本机才有」的文件时，沿用 `xxx.local.txt` 命名即可自动被排除。
+ */
+function isPrivateName(name) {
+  return /\.local(\.|$)/i.test(name) || name.startsWith('.');
+}
 
 /** 要同步的代码文件（相对项目根）。_explore / 测试 / 个人配置一律不进 Skill。 */
 function codeFiles() {
@@ -82,13 +95,27 @@ function codeFiles() {
       if (/\.(html|css|js)$/.test(name)) out.push({ from: full, to: 'webui/' + name });
     }
   }
-  for (const name of fs.readdirSync(ROOT)) {
-    if (name.endsWith('.cmd')) out.push({ from: path.join(ROOT, name), to: 'cmd/' + name });
+  // 双击启动器：仓库里按用途分在 命令/<分类>/ 下，包内**保持同一结构** ——
+  // init.mjs 会原样铺到目标项目，于是文档里的「命令/<分类>/xxx.cmd」在两边都成立。
+  // ⚠ 别再改回平铺：仓库结构与安装结构一旦不一致，文档就只能写两套，迟早对不上。
+  const CMDROOT = path.join(ROOT, '命令');
+  if (fs.existsSync(CMDROOT)) {
+    for (const cat of fs.readdirSync(CMDROOT)) {
+      const catDir = path.join(CMDROOT, cat);
+      if (!fs.statSync(catDir).isDirectory()) continue;
+      for (const name of fs.readdirSync(catDir)) {
+        if (!name.toLowerCase().endsWith('.cmd')) continue;
+        out.push({ from: path.join(catDir, name), to: `命令/${cat}/${name}` });
+      }
+    }
   }
   // 脚手架用的模板：放 assets/，由 scripts/init.mjs 铺到目标工作区
+  // ⚠ _skill/ 里同时住着 personal_tokens.local.txt（本人昵称/uid 词表，**绝不能进包**）——
+  //   必须逐名过滤，否则「无脑同步整个目录」会把黑名单本体复制分享出去。
   const TPL = path.join(S, '_skill');
   if (fs.existsSync(TPL)) {
     for (const name of fs.readdirSync(TPL)) {
+      if (isPrivateName(name)) continue;
       out.push({ from: path.join(TPL, name), to: 'assets/' + name });
     }
   }
@@ -140,6 +167,22 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * 自底向上删掉「空目录」。只删真正空的，任何还有文件的目录原样保留。
+ * 用途：旧结构 `cmd/` 的文件被清掉后只剩一个空壳，留着会让人以为还有东西。
+ */
+function pruneEmptyDirs(dir) {
+  if (!fs.existsSync(dir)) return false;
+  let empty = true;
+  for (const name of fs.readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (fs.statSync(full).isDirectory()) { if (!pruneEmptyDirs(full)) empty = false; }
+    else empty = false;
+  }
+  if (empty) { try { fs.rmdirSync(dir); return true; } catch { return false; } }
+  return false;
+}
+
 /** 扫描一个目录，返回命中清单 */
 function scanDir(dir, tokens) {
   const hits = [];
@@ -184,6 +227,8 @@ function syncInto(items, outDir) {
       try { fs.rmSync(f, { force: true }); removed.push(rel); } catch { /* 占用就留着，下次再说 */ }
     }
   }
+  // 清完文件后再收尾：旧结构留下的空壳目录（如 `cmd/`）一并删掉。
+  for (const d of MANAGED_DIRS) pruneEmptyDirs(path.join(outDir, d));
   return { written, removed };
 }
 

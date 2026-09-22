@@ -39,12 +39,12 @@ reps.append(('[4/4]', '[4/5]', 2))
 reps.append((
     """    & $ocrPy (Join-Path $PSScriptRoot 'image_ocr.py')
   } else {
-    Say '[4/5] 跳过图片文字索引：未安装 OCR 环境（双击「安装OCR环境.cmd」可启用）。'
+    Say '[4/5] 跳过图片文字索引：未安装 OCR 环境（双击「命令/图片与OCR/安装OCR环境.cmd」可启用）。'
   }
 }""",
     """    & $ocrPy -u (Join-Path $PSScriptRoot 'image_ocr.py')
   } else {
-    Say '[4/5] 跳过图片文字索引：未安装 OCR 环境（双击「安装OCR环境.cmd」可启用）。'
+    Say '[4/5] 跳过图片文字索引：未安装 OCR 环境（双击「命令/图片与OCR/安装OCR环境.cmd」可启用）。'
   }
 }
 

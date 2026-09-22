@@ -31,7 +31,8 @@ def snap(label):
 
 # 关键：卸载不该动的目录
 KEEP = ['.edge-profile', 'data/images', 'data/faces', 'data/raw', 'scripts',
-        '查看备份.html', '使用说明.md', '更新备份.cmd', '重建备份.cmd']
+        '查看备份.html', '使用说明.md',
+        '命令/备份与更新/更新备份.cmd', '命令/备份与更新/重建备份.cmd']
 print('=== 卸载前 ===')
 before_free = snap('before')
 keep_before = {k: (dirsize(os.path.join(ROOT, k)) if os.path.isdir(os.path.join(ROOT, k))

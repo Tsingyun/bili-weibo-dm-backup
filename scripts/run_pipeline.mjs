@@ -220,7 +220,7 @@ async function main() {
     if ((step === 'ocr') && (!PY || !hasOcrEnv)) {
       log('');
       log('── [' + (++n) + '/' + stepList.length + '] ' + cmd.title + ' —— 跳过');
-      log('   原因：没装 OCR 环境（双击「安装OCR环境.cmd」可启用）。');
+      log('   原因：没装 OCR 环境（双击「命令/图片与OCR/安装OCR环境.cmd」可启用）。');
       skipped.push(step);
       continue;
     }

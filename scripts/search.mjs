@@ -15,7 +15,7 @@
    交互模式（--interactive）：一行一个查询，边看边换词。
    为什么把它放在 Node 里而不是 .cmd 的 set /p：cmd 控制台的中文输入会按代码页
    转字节，中文关键词经常变成乱码；Node 直接读 stdin 的 UTF-8 就没事。
-   双击「搜索备份.cmd」走的就是这条路。
+   双击「命令/查看与导出/搜索备份.cmd」走的就是这条路。
 
    用法：
      node scripts/search.mjs 直播
