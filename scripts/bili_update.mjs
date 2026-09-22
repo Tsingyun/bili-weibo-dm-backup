@@ -26,6 +26,7 @@ import { pickCard, cardNameFace } from './bili_cards.mjs';
 import { findSession, sessionFromArgs, peerUidOrExit } from './sessions.mjs';
 import { dayStart, dayEnd } from './msg_kind.mjs';
 import { jsAssign } from './lib/jsassign.mjs';
+import { startRun, finishRun, noteError, noteImages, prioritize, loadRetry } from './lib/runreport.mjs';
 
 // ---------------- 配置 ----------------
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -216,6 +217,7 @@ if (exists(MSG_JSON)) {
   if (exists(META_JSON)) { try { meta = J(META_JSON); } catch {} }
   log('      已有 ' + messages.length + ' 条本地记录');
 }
+const RUN_BEFORE = messages.length;
 if (REBUILD) {
   const bak = path.join(RAW_DIR, 'messages.bak.json');
   try {
@@ -229,6 +231,14 @@ if (REBUILD) {
   messages = [];
 }
 const seen = new Set(messages.map(m => String(m.id)));
+
+/* 运行报告（P0-2）：与微博侧同一套格式，落在 <dir>/_runs/ 下 */
+const RUN = startRun({
+  session: SESSION.key, dirAbs: BDIR,
+  mode: REBUILD ? 'rebuild' : (FULL ? 'full' : 'incr'),
+  since: argVal('--since'), until: argVal('--until'),
+  noImg: NO_IMG, messagesBefore: RUN_BEFORE,
+});
 
 // ---------------- 4) 规范化 ----------------
 
@@ -423,7 +433,9 @@ while (page < MAX_PAGES) {
   if (end) q.set('end_seqno', end);
   const j = await apiGet(`${VC}/svr_sync/v1/svr_sync/fetch_session_msgs?${q}`);
   if (!j || j.code !== 0) {
-    log('      拉取失败：' + ((j && (j.message || j.msg)) || '未知错误') + '，停止');
+    const why = (j && (j.message || j.msg)) || '未知错误';
+    noteError(RUN, '拉取失败 code=' + (j && j.code) + ' ' + why);
+    log('      拉取失败：' + why + '，停止');
     break;
   }
   const d = j.data || {};
@@ -473,6 +485,7 @@ while (page < MAX_PAGES) {
   await sleep(250);
 }
 log(`      共翻 ${page} 页，新增 ${added} 条，累计 ${messages.length} 条（耗时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s）`);
+RUN.pages = page; RUN.added = added; RUN.reached_end = reachEnd;
 
 function cmpMsg(a, b) { return (a.ts || 0) - (b.ts || 0) || String(a.seqno || a.id).localeCompare(String(b.seqno || b.id)); }
 function MSGS_PARTIAL() { return path.join(RAW_DIR, 'partial.json'); }
@@ -517,28 +530,36 @@ if (!NO_IMG) {
 
   const jobs = [];
   for (const m of messages) for (const im of (m.images || [])) if (im.url) jobs.push(im);
-  log('[3/6] 下载图片（共 ' + jobs.length + ' 项）…');
+  /* 上次失败过的排到最前面（P0-2）：不额外发请求，只是先处理它们 */
+  const pr = prioritize(jobs, BDIR, (im) => im.file || im.url || '');
+  const jobs2 = pr.jobs;
+  log('[3/6] 下载图片（共 ' + jobs2.length + ' 项' +
+      (pr.pending ? `，其中上次失败待重试 ${pr.pending} 项` : '') + '）…');
   let ok = 0, skip = 0, fail = 0;
-  await pool(jobs, async (im) => {
+  const failures = [];
+  await pool(jobs2, async (im) => {
     const base = path.join(IMG_DIR, im.file);
     for (const e of Object.values(EXT)) {
       if (exists(base + e)) { im.local = 'bili/images/' + im.file + e; skip++; return; }
     }
+    const dead = (why) => { fail++; failures.push({ key: im.file || im.url, kind: im.kind || '', url: String(im.url || '').slice(0, 200), msg: why }); };
     try {
       const r = await fetch(im.url, { headers: HDR(), signal: AbortSignal.timeout(60000) });
-      if (!r.ok) { fail++; return; }
+      if (!r.ok) { dead('HTTP ' + r.status); return; }
       const ct = (r.headers.get('content-type') || '').split(';')[0];
-      if (!/^image\//.test(ct)) { fail++; return; }
+      if (!/^image\//.test(ct)) { dead('返回的不是图片：' + ct); return; }
       const ext = EXT[ct] || '.jpg';
       const buf = Buffer.from(await r.arrayBuffer());
-      if (buf.length < 100) { fail++; return; }
+      if (buf.length < 100) { dead('内容过小（' + buf.length + ' 字节）'); return; }
       fs.writeFileSync(base + ext, buf);
       im.local = 'bili/images/' + im.file + ext;
       im.bytes = buf.length;
       ok++;
-    } catch { fail++; }
+    } catch (e) { dead(e.message || '请求异常'); }
   });
-  log(`      完成：新下载 ${ok}，已存在 ${skip}，失败 ${fail}`);
+  noteImages(RUN, { jobs: jobs2.length, ok, skip, fail, failures });
+  log(`      完成：新下载 ${ok}，已存在 ${skip}，失败 ${fail}` +
+      (fail ? `（已记进 ${RUN.dir}/retry.json，下次优先重试）` : ''));
 } else log('[3/6] 跳过图片下载');
 
 // ---------------- 7) 输出 ----------------
@@ -585,6 +606,19 @@ fs.writeFileSync(META_JSON, JSON.stringify(meta, null, 2), 'utf8');
 fs.writeFileSync(path.join(BDIR, 'messages.js'),
   jsAssign(GLOBALS.data, JSON.stringify({ meta, messages })), 'utf8');
 if (SESSION.key !== 'bili') log('      会话：' + SESSION.key + '（' + SESSION.dir + '/，全局名 ' + GLOBALS.data + '）');
+
+/* P0-2：写运行报告 + 更新待重试清单（这次成功的自动销账）。写失败不影响备份结果。 */
+try {
+  const pendingKeys = new Set(loadRetry(BDIR).map((i) => i.key));
+  const succeededKeys = [];
+  for (const m of messages) for (const im of (m.images || [])) {
+    if (im.local && im.file && pendingKeys.has(im.file)) succeededKeys.push(im.file);
+  }
+  const rr = finishRun(RUN, { messages_after: messages.length, succeededKeys });
+  if (rr) log('      [报告] ' + rr.file + `（待重试 ${rr.pending} 项）`);
+} catch (e) {
+  log('      [报告] 写入失败（不影响备份结果）：' + e.message);
+}
 
 log('[5/6] 完成 ✅');
 log('      消息总数：' + meta.total);

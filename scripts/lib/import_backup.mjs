@@ -18,6 +18,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { ROOT, MANIFEST_PATH, readManifest, defaultGlobals } from '../sessions.mjs';
 import { ensureDir, rel, dirStat, humanSize, writeJson, safeSegment } from './paths.mjs';
@@ -160,6 +161,42 @@ function readEntries(srcPath) {
  * 主入口。
  * @param {{srcPath:string, name?:string, label?:string}} opts
  */
+/**
+ * 按包内 manifest.json 的 files 字段校验每个文件的 sha256。
+ * @returns {{checked:boolean, ok:boolean, files:number, missing:string[], changed:string[], note?:string}}
+ *   checked=false 表示这个包不带校验信息（老包），调用方应当**跳过**而不是报错。
+ */
+export function verifyBundle(entries) {
+  const out = { checked: false, ok: true, files: 0, missing: [], changed: [] };
+  const mani = entries.find((e) => e && e.name === 'manifest.json');
+  if (!mani) return out;
+  let man;
+  try {
+    man = JSON.parse(mani.data ? mani.data.toString('utf8') : fs.readFileSync(mani.srcPath, 'utf8'));
+  } catch { return out; }
+  const want = man && man.files;
+  if (!want || man.hashes !== true) { out.note = '这个包没有校验信息（旧版本导出），已跳过校验'; return out; }
+
+  out.checked = true;
+  const byName = new Map();
+  for (const e of entries) if (!byName.has(e.name)) byName.set(e.name, e);
+  for (const [name, meta] of Object.entries(want)) {
+    const e = byName.get(name);
+    if (!e) { out.missing.push(name); continue; }
+    const buf = e.data != null
+      ? (Buffer.isBuffer(e.data) ? e.data : Buffer.from(String(e.data), 'utf8'))
+      : fs.readFileSync(e.srcPath);
+    out.files++;
+    if (meta && meta.size && buf.length !== meta.size) { out.changed.push(name); continue; }
+    if (meta && meta.sha256) {
+      const got = crypto.createHash('sha256').update(buf).digest('hex');
+      if (got !== meta.sha256) out.changed.push(name);
+    }
+  }
+  out.ok = !out.missing.length && !out.changed.length;
+  return out;
+}
+
 export function importBackup(opts = {}) {
   const srcPath = path.resolve(String(opts.srcPath || ''));
   if (!srcPath || !fs.existsSync(srcPath)) throw new Error('找不到这个路径：' + opts.srcPath);
@@ -193,6 +230,11 @@ export function importBackup(opts = {}) {
     else fs.copyFileSync(e.srcPath, destResolved);
     wrote++;
   }
+
+  /* 完整性校验（P0-3）：包里有 manifest.files 就按 sha256 逐个对一遍。
+     网盘传输、解压中断、别人改过包 —— 这些以前都是"打开才发现少图"，
+     现在在导入这一步就明说。**老包没有 hashes 字段就跳过**，绝不因为缺字段报错。 */
+  const integrity = verifyBundle(entries);
 
   // 登记会话
   const man = readManifest();
@@ -294,7 +336,7 @@ export function importBackup(opts = {}) {
   const st = dirStat(batchDir);
   return {
     batch, dir: rel(batchDir), files: wrote, bytes: st.bytes, human: humanSize(st.bytes),
-    sessions: added, sessionsJs,
+    sessions: added, sessionsJs, integrity,
   };
 }
 

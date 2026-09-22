@@ -17,12 +17,18 @@
  *   node scripts/doctor.mjs --json             # 机器可读（给自动化用）
  *   node scripts/doctor.mjs --fix --dry-run    # 先看会改什么，不动手
  *   node scripts/doctor.mjs --fix              # 修：重生成 js 包装 + 清孤儿索引键
+ *   node scripts/doctor.mjs --verify           # 顺便校验数据完整性（拿 integrity.json 对指纹）
+ *   node scripts/doctor.mjs --verify --full    # 完整性全量校验（默认只抽样）
+ *   node scripts/doctor.mjs --audit            # 顺便查有没有漏抓（会打接口，已限速）
+ *   node scripts/doctor.mjs --audit --offline  # 只看本地，不联网
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT, loadSessions } from './sessions.mjs';
 import { jsAssign } from './lib/jsassign.mjs';
+import { verifySession } from './integrity.mjs';
+import { auditSession } from './audit_gaps.mjs';
 
 const ARGS = process.argv.slice(2);
 const has = (f) => ARGS.includes(f);
@@ -34,6 +40,8 @@ const val = (f, d = '') => {
 const AS_JSON = has('--json');
 const FIX = has('--fix');
 const DRY = has('--dry-run');
+const VERIFY = has('--verify');
+const AUDIT = has('--audit');
 const sessionArg = val('--session', 'all');
 
 const INDEX_JS = ['messages.js', 'ocr.js', 'vlm.js', 'faces.js'];
@@ -284,7 +292,7 @@ function snapshotInfo() {
 }
 
 // ---------------------------------------------------------------- main
-function main() {
+async function main() {
   let sessions;
   try { sessions = loadSessions(); } catch (e) {
     console.error('[×] sessions.json 有问题：' + e.message);
@@ -296,6 +304,56 @@ function main() {
   }
 
   const reports = sessions.map(checkSession);
+
+  /* ---------- 完整性校验（--verify）----------
+   * 上面那些检查都在回答「结构对不对」，只有这一项在回答「内容有没有被改坏」：
+   * 位翻转、网盘同步半截、误覆盖 —— 文件名和大小都可能一模一样，只有指纹会变。
+   * 默认抽样（几秒）；真要较真加 --full。清单不存在只提醒，不算错误。 */
+  const verified = [];
+  if (VERIFY) {
+    for (const s of sessions) {
+      const v = verifySession(s, { full: has('--full') });
+      verified.push(v);
+      const r = reports.find((x) => x.key === s.key);
+      if (!r) continue;
+      if (v.stale) { r.warns.push('完整性：' + v.msg); continue; }
+      if (v.missing.length) {
+        r.errors.push(`完整性：${v.missing.length} 个文件清单里有、磁盘上没了（例如 ${v.missing[0]}）`);
+      }
+      if (v.changed.length) {
+        r.errors.push(`完整性：${v.changed.length} 个文件内容与清单不一致（例如 ${v.changed[0]}）`);
+      }
+      if (v.extra.length) {
+        r.warns.push(`完整性：${v.extra.length} 个文件不在清单里（抓取 / 压缩后新增属正常，` +
+                     '跑「node scripts/integrity.mjs --build」更新清单）');
+      }
+      r.stats.integrity = v.checked;
+    }
+  }
+
+  /* ---------- 漏抓对账（--audit）----------
+   * 增量是「遇到整页都已存在就停」，中途断过留下的洞之后再也不会被发现。
+   * 这一项**只在用户显式加 --audit 时才跑**（要打接口，且默认不进定时任务，
+   * 免得多出来的请求把平台限流招来）。只把「线上有、本地没有」算成错误；
+   * 本地序号跳号只是提示 —— B站 seqno 带位段，跳号本身是正常的。 */
+  const audited = [];
+  if (AUDIT) {
+    for (const s of sessions) {
+      if (s.imported) continue;
+      const a = await auditSession(s, { offline: has('--offline') });
+      audited.push(a);
+      const r = reports.find((x) => x.key === s.key);
+      if (!r) continue;
+      if (a.note) r.warns.push('对账：' + a.note);
+      if ((a.remoteMissing || []).length) {
+        r.errors.push(`对账：线上最新一页里有 ${a.remoteMissing.length} 条本地没有（例如 ${a.remoteMissing[0].id}）`);
+      }
+      if (a.deep && a.deep.missing) {
+        r.errors.push(`对账：往回抽样的一页里还有 ${a.deep.missing} 条本地没有`);
+      }
+      for (const t of (a.advice || [])) r.warns.push('对账建议：' + t);
+    }
+  }
 
   let nErr = 0, nWarn = 0, nFix = 0;
   for (const r of reports) { nErr += r.errors.length; nWarn += r.warns.length; nFix += r.fixes.length; }
@@ -354,7 +412,7 @@ function main() {
       generated_at: new Date().toISOString(),
       sessions: reports,
       summary: { errors: nErr, warns: nWarn, fixable: nFix },
-      snapshot: snap, applied,
+      snapshot: snap, applied, verified, audited,
     }, null, 2));
     return nErr ? 1 : 0;
   }
@@ -368,7 +426,8 @@ function main() {
     console.log('─'.repeat(62));
     console.log(`【${r.label}】${r.dir}/`);
     console.log(`  消息 ${s.messages ?? '-'} 条 · 图片引用 ${s.imageRefs ?? '-'} / 磁盘 ${s.imagesOnDisk ?? '-'} 个` +
-                ` · OCR ${s.ocr ?? '-'} · 图片描述 ${s.vlm ?? '-'} · 表情 ${s.faces ?? '-'}`);
+                ` · OCR ${s.ocr ?? '-'} · 图片描述 ${s.vlm ?? '-'} · 表情 ${s.faces ?? '-'}` +
+                (VERIFY ? ` · 完整性校验 ${s.integrity ?? '-'} 个文件` : ''));
     if (r.errors.length) {
       console.log(`  ❌ 错误 ${r.errors.length} 项：`);
       for (const e of r.errors) console.log('      · ' + e);
@@ -402,4 +461,4 @@ function main() {
   return nErr ? 1 : 0;
 }
 
-process.exit(main());
+process.exit(await main());

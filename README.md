@@ -108,11 +108,15 @@ copy scripts\_skill\sessions.template.json sessions.json
 - 三种模式：增量（只补新的）· 全量（翻完历史）· 全量重建（按新规则重抓）
 - 能指定时间范围；重建前自动留一份旧数据；索引可打快照并回滚
 - 图片、GIF、表情、头像一起下
+- **完整性清单**：抓完给每个文件记 sha256，之后随时能查「有没有被悄悄改掉 / 丢了」
+- **漏抓对账**：拿线上最新几条和你本地对一遍，翻页被跳过的地方能发现
+- **运行报告**：每次抓取都留一份小报告，失败的图片进待重试清单，下次先补它们
 
 **看**
 
 - 双击即开的离线网页，顶部切换「微博 / B站」
-- 按天互动统计：折线图、热力图、发言节律、词云
+- 按天互动统计：折线图、热力图、发言节律、词云，**并能导出成一份自包含 HTML 报告**
+- **媒体墙**：图片 / 动图表情 / 视频封面铺成一整面墙，按类型和「谁发的」筛选，点开看大图
 - 每条消息都**按原样存档**：文字、卡片、语音、视频、表情、链接都不改写、不合并
 - 单条消息可以右键隐藏（手机长按）；自动回复可一键全部隐藏
 - 「一天」= 当天 **05:00 → 次日 05:00**（照顾夜猫子作息，凌晨的消息算前一天）
@@ -125,7 +129,8 @@ copy scripts\_skill\sessions.template.json sessions.json
 
 **导出**
 
-- 格式：`jsonl` · `json` · `csv` · `md` · `html` · `bundle.zip`
+- 格式：`jsonl` · `json` · `csv` · `md` · `html` · **`html-single`（图片内嵌，单文件就能拷走）** · `bundle.zip`
+- `bundle.zip` 自带 sha256 清单，对方导入时会先校验一遍；老包没有清单会明确跳过校验而不是假装通过
 - 支持时间窗、按类型筛选、**一键打码**（手机号 / 邮箱 / 身份证 / 银行卡 / 地址）
 - `bundle.zip` 是给人分享的：含消息 + 图片 + 索引 + 说明，对方拖进 WebUI 第 5 步就能看
 
@@ -133,6 +138,7 @@ copy scripts\_skill\sessions.template.json sessions.json
 
 - 定时自动更新：双击一次注册，之后默认**每周一早上 8:00** 自动跑完整链路
 - 一键体检：索引与磁盘对账、js/json 一致性、图片缺失检查，能自动修
+- 体检还能加两项：`--verify`（按完整性清单查文件有没有被改）· `--audit`（查有没有漏抓）
 
 ---
 
@@ -142,7 +148,7 @@ copy scripts\_skill\sessions.template.json sessions.json
 
 | 文件夹 | 里面有 |
 |---|---|
-| `备份与更新/` | 更新备份 · 重建备份 · 更新B站备份 · 重建B站备份 |
+| `备份与更新/` | 更新备份 · 重建备份 · 更新B站备份 · 重建B站备份 · **校验完整性** · **漏抓对账** |
 | `查看与导出/` | 启动WebUI · 搜索备份 · 重建搜索索引 · 索引快照 · 导出JSONL · 导出表情包 |
 | `图片与OCR/` | 压缩图片 · 安装OCR环境 · 卸载OCR环境 |
 | `配置与定时/` | 生成会话清单 · 注册定时更新 · 取消定时更新 |
@@ -156,6 +162,8 @@ copy scripts\_skill\sessions.template.json sessions.json
 命令/查看与导出/重建搜索索引.cmd      # 数据更新后跑一次，搜索才准
 命令/查看与导出/启动WebUI.cmd         # 图形界面（与根目录 启动.cmd 等价）
 命令/配置与定时/注册定时更新.cmd      # 注册「每周一 8:00 自动更新」
+命令/备份与更新/校验完整性.cmd        # 查备份有没有被改坏（第一次先加 --build 建清单）
+命令/备份与更新/漏抓对账.cmd          # 查有没有漏抓（加 --offline 完全不联网）
 ```
 
 习惯命令行的话，等价的 Node 命令：
@@ -166,6 +174,10 @@ node scripts/run_pipeline.mjs --session bili --mode incr
 node scripts/build_fts.mjs                         # 重建检索索引
 node scripts/doctor.mjs                            # 体检
 node scripts/doctor.mjs --fix --dry-run            # 先看会修什么，再决定
+node scripts/doctor.mjs --verify                   # 顺带按 sha256 清单查文件
+node scripts/doctor.mjs --audit                    # 顺带查有没有漏抓（要登录态）
+node scripts/integrity.mjs --build                 # 建立完整性清单（抓完全量后跑一次）
+node scripts/audit_gaps.mjs --offline              # 只在本地查，完全不联网
 node scripts/server.mjs                            # 起 WebUI
 ```
 
@@ -192,6 +204,8 @@ bili/            B站：结构与 data/ 一样
 search/          检索库
 exports/         导出产物
 snapshots/       索引快照
+_runs/           每次抓取的运行报告 + 待重试清单（在数据目录里，如 data/_runs/）
+integrity.json   完整性清单（在数据目录里，如 data/integrity.json）
 .edge-profile/   专用浏览器的登录态
 ```
 

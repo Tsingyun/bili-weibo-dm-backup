@@ -17,6 +17,7 @@ import { CDP, sleep } from './cdp_lib.mjs';
 import { findSession, sessionFromArgs, peerUidOrExit } from './sessions.mjs';
 import { dayStart, dayEnd } from './msg_kind.mjs';
 import { jsAssign } from './lib/jsassign.mjs';
+import { startRun, finishRun, noteError, noteImages, prioritize, loadRetry } from './lib/runreport.mjs';
 
 // ---------------- 配置 ----------------
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -181,6 +182,7 @@ if (exists(MSG_JSON)) {
   if (exists(META_JSON)) { try { meta = J(META_JSON); } catch {} }
   log('      已有 ' + messages.length + ' 条本地记录');
 }
+const RUN_BEFORE = messages.length;
 if (REBUILD) {
   const bak = path.join(DATA_DIR, 'raw', 'messages.bak.json');
   try {
@@ -194,6 +196,15 @@ if (REBUILD) {
   messages = [];
 }
 const seen = new Set(messages.map(m => m.id));
+
+/* 运行报告（P0-2）：这次抓了多少、图片成几败几、有没有接口报错，
+ * 结束时会落到 <dir>/_runs/<时间戳>.json；窗口关了也查得到。 */
+const RUN = startRun({
+  session: SESSION.key, dirAbs: DATA_DIR,
+  mode: REBUILD ? 'rebuild' : (FULL ? 'full' : 'incr'),
+  since: argVal('--since'), until: argVal('--until'),
+  noImg: NO_IMG, messagesBefore: RUN_BEFORE,
+});
 
 // ---------------- 4) 规范化 ----------------
 function normalize(m) {
@@ -303,7 +314,8 @@ const startedAt = Date.now();
 while (page < MAX_PAGES) {
   const raw = await apiGet(`2/direct_messages/conversation.json?convert_emoji=1&count=${PAGE_COUNT}&max_id=${cursor}&uid=${PEER_UID}&is_include_group=0&from_contacts=1&source=209678993`);
   let j;
-  try { j = JSON.parse(raw); } catch { log('      解析失败，停止：' + String(raw).slice(0, 160)); break; }
+  if (typeof raw === 'string' && raw.startsWith('ERR:')) noteError(RUN, raw.slice(0, 160));
+  try { j = JSON.parse(raw); } catch { noteError(RUN, '翻页返回解析失败：' + String(raw).slice(0, 160)); log('      解析失败，停止：' + String(raw).slice(0, 160)); break; }
   const list = j.direct_messages || [];
   if (!list.length) { reachEnd = true; break; }
   let fresh = 0;
@@ -334,6 +346,7 @@ while (page < MAX_PAGES) {
   await sleep(150);
 }
 log(`      共翻 ${page} 页，新增 ${added} 条，累计 ${messages.length} 条（耗时 ${((Date.now() - startedAt) / 1000).toFixed(1)}s）`);
+RUN.pages = page; RUN.added = added; RUN.reached_end = reachEnd;
 
 // ---------------- 6) 表情图地址 ----------------
 let emojiMap = exists(path.join(DATA_DIR, 'emoji_map.json')) ? J(path.join(DATA_DIR, 'emoji_map.json')) : {};
@@ -405,10 +418,16 @@ if (!NO_IMG) {
     }
   }
 
-  log('[4/6] 下载图片（共 ' + jobs.length + ' 项）…');
+  /* 上次失败过的排到最前面（P0-2）：**不额外发请求**，只是先处理它们 ——
+     否则「上次挂了 30 张、这次只补了 10 张」时，补的都是新图，旧的永远轮不到。 */
+  const pr = prioritize(jobs, DATA_DIR, (j) => (j.im && j.im.file) || '');
+  const jobs2 = pr.jobs;
+  log('[4/6] 下载图片（共 ' + jobs2.length + ' 项' +
+      (pr.pending ? `，其中上次失败待重试 ${pr.pending} 项` : '') + '）…');
   let ok = 0, skip = 0, fail = 0;
+  const failures = [];
   const inflight = new Map();
-  await pool(jobs, async ({ im, url, alt }) => {
+  await pool(jobs2, async ({ im, url, alt }) => {
     const base = path.join(IMG_DIR, im.file);
     for (const e of Object.values(EXT)) {
       if (exists(base + e)) { im.local = 'data/images/' + im.file + e; skip++; return; }
@@ -430,8 +449,14 @@ if (!NO_IMG) {
       } catch { /* 试下一个 */ }
     }
     fail++;
+    failures.push({
+      key: im.file || url, kind: im.kind || '',
+      url: String(url || '').slice(0, 200), msg: '所有候选地址都下载失败',
+    });
   });
-  log(`      完成：新下载 ${ok}，已存在 ${skip}，失败 ${fail}`);
+  noteImages(RUN, { jobs: jobs2.length, ok, skip, fail, failures });
+  log(`      完成：新下载 ${ok}，已存在 ${skip}，失败 ${fail}` +
+      (fail ? `（已记进 ${RUN.dir}/retry.json，下次优先重试）` : ''));
 } else log('[4/6] 跳过图片下载');
 
 // ---------------- 8) 输出 ----------------
@@ -458,6 +483,20 @@ fs.writeFileSync(META_JSON, JSON.stringify(meta, null, 2), 'utf8');
 fs.writeFileSync(path.join(DATA_DIR, 'messages.js'),
   jsAssign(GLOBALS.data, JSON.stringify({ meta, messages })), 'utf8');
 if (SESSION.key !== 'weibo') log('      会话：' + SESSION.key + '（' + SESSION.dir + '/，全局名 ' + GLOBALS.data + '）');
+
+/* P0-2：写运行报告并更新待重试清单（这次下载成功的自动销账）。
+   报告写不出来也不能算抓取失败 —— 所以整段兜住，只打一行。 */
+try {
+  const pendingKeys = new Set(loadRetry(DATA_DIR).map((i) => i.key));
+  const succeededKeys = [];
+  for (const m of messages) for (const im of (m.images || [])) {
+    if (im.local && im.file && pendingKeys.has(im.file)) succeededKeys.push(im.file);
+  }
+  const rr = finishRun(RUN, { messages_after: messages.length, succeededKeys });
+  if (rr) log('      [报告] ' + rr.file + `（待重试 ${rr.pending} 项）`);
+} catch (e) {
+  log('      [报告] 写入失败（不影响备份结果）：' + e.message);
+}
 
 log('[6/6] 完成 ✅');
 log('      消息总数：' + meta.total);

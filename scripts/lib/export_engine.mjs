@@ -20,6 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { ROOT, loadSessions, findSession } from '../sessions.mjs';
 import { msgKind, maskText, localDay, localTime, dayStart, dayEnd } from '../msg_kind.mjs';
 import { ensureDir, safeJoin, rel, humanSize, safeSegment } from './paths.mjs';
@@ -32,6 +33,7 @@ export const FORMATS = [
   { id: 'csv', ext: 'csv', label: 'CSV（表格 / Excel）' },
   { id: 'md', ext: 'md', label: 'Markdown（按天排版，适合阅读）' },
   { id: 'html', ext: 'html', label: 'HTML（单文件网页，双击就能看）' },
+  { id: 'html-single', ext: 'html', label: 'HTML（图片内嵌，单文件就能随手拷走）' },
   { id: 'bundle', ext: 'zip', label: '可分享备份包（zip，能被本程序「加载」）' },
 ];
 
@@ -325,8 +327,93 @@ function renderHtml(groups, opts) {
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>私信备份导出</title><style>
-:root{--bg:#0f1115;--fg:#e6e8ec;--muted:#98a0ad;--card:#171a21;--me:#1d3b2a;--peer:#1b1f27;--line:#252a33}
+<title>私信备份导出</title><style>${HTML_BASE_CSS}</style></head><body><div class="wrap">
+<h1>私信备份导出</h1>
+<p class="meta">导出时间：${esc(new Date().toLocaleString('zh-CN'))}　共 ${total.toLocaleString()} 条${
+    opts.since || opts.until ? `　范围：${esc(opts.since || '最早')} ~ ${esc(opts.until || '最新')}` : ''}</p>
+${body.join('\n')}
+</div></body></html>`;
+}
+
+/* ------------------------------------------------------------------
+   html-single：把图片 base64 内嵌进同一个 HTML
+   ------------------------------------------------------------------
+   普通 HTML 导出里的图片是**相对路径**，拷走一份 HTML 就全裂；
+   这个变体把图片塞进文件里，拷到网盘 / 发给别人 / 存档都还是一个文件能看。
+
+   代价是体积：一张 300 KB 的图进去变 400 KB 文本。所以这里硬设两道闸：
+     · 单张 > 8 MB 不内嵌（改成一行说明，不静默丢掉）
+     · 总体 > 60 MB 后剩下的也不内嵌
+   超了会在导出结果里明确写「有 N 张没内嵌」，绝不让用户以为图都在。
+   ------------------------------------------------------------------ */
+const IMAGE_MIME = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif',
+};
+const SINGLE_MAX_ONE = 8 * 1024 * 1024;
+const SINGLE_MAX_TOTAL = 60 * 1024 * 1024;
+
+/**
+ * @returns {{text:string, embedded:number, skipped:number, bytes:number}}
+ */
+export function buildHtmlSingle(groups, opts) {
+  let embedded = 0, skipped = 0, bytes = 0;
+  const body = [];
+  for (const g of groups) {
+    body.push(`<section class="conv"><h2>${esc(g.session.label)}<small>${g.rows.length} 条</small></h2>`);
+    body.push(`<p class="meta">对方：${esc(g.peerName)}　我：${esc(g.selfName)}</p>`);
+    let day = null;
+    for (const r of g.rows) {
+      if (r.date !== day) { day = r.date; body.push(`<h3 class="day">${esc(day || '（无日期）')}</h3>`); }
+      const mine = r.from === 'me';
+      const extras = [];
+      if (r.ocr) extras.push(`<div class="ex">🖼 图内文字：${esc(r.ocr)}</div>`);
+      if (r.vlm) extras.push(`<div class="ex">🖼 图片描述：${esc(r.vlm)}</div>`);
+      if (r.card && r.card.title) {
+        const cu = safeUrl(r.card.url);
+        extras.push(`<div class="ex">🔗 ${esc(r.card.title)} ${cu ? `<a href="${esc(cu)}">${esc(cu)}</a>` : ''}</div>`);
+      }
+      const links = r.links.map(safeUrl).filter(Boolean);
+      if (links.length) extras.push(`<div class="ex">🔗 ${links.map((u) => `<a href="${esc(u)}">${esc(u)}</a>`).join(' ')}</div>`);
+      // 图片本体：内嵌成 data: 地址；装不下的留一行说明
+      const pics = [];
+      for (const im of (r.images || [])) {
+        const src = im.local ? path.join(ROOT, String(im.local).replace(/\\/g, '/')) : '';
+        if (!src || !fs.existsSync(src)) continue;
+        const st = fs.statSync(src);
+        if (st.size > SINGLE_MAX_ONE || bytes + st.size > SINGLE_MAX_TOTAL) { skipped++; continue; }
+        const mime = IMAGE_MIME[path.extname(src).toLowerCase()] || 'image/jpeg';
+        const b64 = fs.readFileSync(src).toString('base64');
+        bytes += st.size;
+        embedded++;
+        pics.push(`<img class="pic" src="data:${mime};base64,${b64}" alt="图片">`);
+      }
+      if (pics.length) extras.push(`<div class="pics">${pics.join('')}</div>`);
+      body.push(`<div class="msg ${mine ? 'me' : ''}">` +
+        `<div class="who">${esc(r.time || '--:--')} · ${esc(mine ? g.selfName : g.peerName)}` +
+        `${r.kind !== 'count' ? `<span class="tag">${esc({ auto: '自动回复', sys: '系统', gift: '礼物' }[r.kind] || r.kind)}</span>` : ''}</div>` +
+        `<div class="txt">${esc(r.text).replace(/\n/g, '<br>')}</div>${extras.join('')}</div>`);
+    }
+    body.push('</section>');
+  }
+  const total = groups.reduce((n, g) => n + g.rows.length, 0);
+  const text = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>私信备份导出（图片内嵌）</title><style>${HTML_BASE_CSS}
+.pics{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pics img.pic{max-width:220px;max-height:260px;border-radius:8px;border:1px solid var(--line)}
+.warn{background:#3a2a12;color:#e5b567;border-radius:8px;padding:8px 12px;font-size:13px;margin:0 0 12px}</style></head><body><div class="wrap">
+<h1>私信备份导出（图片内嵌）</h1>
+<p class="meta">导出时间：${esc(new Date().toLocaleString('zh-CN'))}　共 ${total.toLocaleString()} 条${
+    opts.since || opts.until ? `　范围：${esc(opts.since || '最早')} ~ ${esc(opts.until || '最新')}` : ''}　内嵌图片 ${embedded} 张${skipped ? `（${skipped} 张因过大未内嵌）` : ''}</p>
+${skipped ? `<p class="warn">有 ${skipped} 张图片因为超过体积上限没有内嵌 —— 它们仍然完整保存在你本机的备份目录里，只是这份 HTML 里看不了。</p>` : ''}
+${body.join('\n')}
+</div></body></html>`;
+  return { text, embedded, skipped, bytes };
+}
+
+/** HTML 导出共用的样式（普通版与内嵌版都用它，避免两份 CSS 各改各的） */
+const HTML_BASE_CSS = `:root{--bg:#0f1115;--fg:#e6e8ec;--muted:#98a0ad;--card:#171a21;--me:#1d3b2a;--peer:#1b1f27;--line:#252a33}
 *{box-sizing:border-box}body{margin:0;padding:28px 18px 80px;background:var(--bg);color:var(--fg);
 font:15px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 .wrap{max-width:820px;margin:0 auto}h1{font-size:20px}h2{font-size:17px;margin:32px 0 4px}
@@ -340,13 +427,7 @@ font-weight:600;margin:22px 0 10px;padding:6px 0;text-align:center;border-bottom
 .tag{background:#3a2a12;color:#e5b567;border-radius:5px;padding:0 5px;margin-left:6px;font-size:11px}
 .txt{white-space:pre-wrap;word-break:break-word}
 .ex{margin-top:5px;font-size:12.5px;color:var(--muted);border-left:2px solid var(--line);padding-left:8px}
-a{color:#7fb3ff}</style></head><body><div class="wrap">
-<h1>私信备份导出</h1>
-<p class="meta">导出时间：${esc(new Date().toLocaleString('zh-CN'))}　共 ${total.toLocaleString()} 条${
-    opts.since || opts.until ? `　范围：${esc(opts.since || '最早')} ~ ${esc(opts.until || '最新')}` : ''}</p>
-${body.join('\n')}
-</div></body></html>`;
-}
+a{color:#7fb3ff}`;
 
 const BUNDLE_README = `# 私信备份包（可被 dm-archive 加载）
 
@@ -362,7 +443,7 @@ const BUNDLE_README = `# 私信备份包（可被 dm-archive 加载）
 
 | 文件 | 说明 |
 |---|---|
-| \`manifest.json\` | 包信息：导出时间、会话、条数、时间范围 |
+| \`manifest.json\` | 包信息：导出时间、会话、条数、时间范围，**以及每个文件的 sha256（导入时会自动校验）** |
 | \`<会话>/messages.json\` | 消息正文 |
 | \`<会话>/messages.js\` | 同上，给查看页读的版本 |
 | \`<会话>/ocr.json\` \`vlm.json\` | 图内文字 / 图片描述（如果有） |
@@ -377,6 +458,9 @@ export function render(format, groups, opts) {
     case 'csv': return renderCsv(groups);
     case 'md': return renderMd(groups, opts);
     case 'html': return renderHtml(groups, opts);
+    // 内嵌版要走 runExport 的专用分支（还要把"几张没塞进去"写进结果），
+    // 这里只给纯文本调用方一个可用的字符串。
+    case 'html-single': return buildHtmlSingle(groups, opts).text;
     default: throw new Error('不支持的格式：' + format);
   }
 }
@@ -486,10 +570,33 @@ export function runExport(opts = {}) {
         peer: { name: g.peerName, uid: '' }, self: { name: g.selfName, uid: '' },
       });
     }
+    /* 给包里每个文件记 sha256（P0-3）：对方导入时能验证「包有没有在传输中被改坏 / 少文件」。
+       ⚠ 必须在把 manifest.json 塞进 entries **之前**算，否则要给自己算自己的哈希。
+       老包没有这个字段 —— 导入端见不到 hashes 就跳过校验，不会误报。 */
+    const hashes = {};
+    for (const e of entries) {
+      if (e.name === 'manifest.json') continue;
+      const buf = Buffer.isBuffer(e.data) ? e.data : Buffer.from(String(e.data ?? ''), 'utf8');
+      hashes[e.name] = { sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length };
+    }
+    manifest.hashes = true;
+    manifest.files = hashes;
     entries.unshift({ name: 'manifest.json', data: JSON.stringify(manifest, null, 2) });
     entries.push({ name: '先读我.md', data: BUNDLE_README });
     const z = writeZip(entries, outPath);
     files.push({ name, rel: rel(outPath), path: outPath, size: z.bytes, human: humanSize(z.bytes) });
+  } else if (fmt.id === 'html-single') {
+    const name = defaultName(opts, 'html');
+    const outPath = path.join(outDir, name);
+    const built = buildHtmlSingle(groups, opts);
+    fs.writeFileSync(outPath, built.text, 'utf8');
+    const size = Buffer.byteLength(built.text, 'utf8');
+    files.push({ name, rel: rel(outPath), path: outPath, size, human: humanSize(size) });
+    stats.embeddedImages = built.embedded;
+    if (built.skipped) {
+      warnings.push(`有 ${built.skipped} 张图片超过体积上限（单张 8 MB / 总计 60 MB）没有内嵌 —— ` +
+                    '它们在你本机的备份目录里仍然完整，只是这份 HTML 里看不了');
+    }
   } else {
     const name = defaultName(opts, fmt.ext);
     const outPath = path.join(outDir, name);

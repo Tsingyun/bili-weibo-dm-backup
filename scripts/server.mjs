@@ -33,6 +33,7 @@ import {
 import { startJob, getJob, listJobs, killJob, subscribe, anyRunning } from './lib/jobs.mjs';
 import { FORMATS, KINDS, runExport, collect } from './lib/export_engine.mjs';
 import { importBackup, listImported, deleteImported } from './lib/import_backup.mjs';
+import { listRuns, loadRetry } from './lib/runreport.mjs';
 import { findBrowser, statusFor, isPortOpen, readCookies, saveCookie, COOKIE_HINT, PORT as CDP_PORT } from './login.mjs';
 
 const ARGS = process.argv.slice(2);
@@ -765,6 +766,26 @@ async function handleApi(req, res, u) {
     } catch (e) {
       return fail(res, 400, '已接收文件（imports/' + safeName + '），但导入失败：' + e.message);
     }
+  }
+
+  /* 最近几次抓取的运行报告（P0-2）—— 关掉窗口也还在，因为已经落在 <dir>/_runs/ 里 */
+  if (p === '/api/runs') {
+    try {
+      const list = loadSessions();
+      const out = [];
+      for (const s of list) {
+        if (s.imported) continue;                       // 导入的他人备份没有抓取历史
+        const dirAbs = path.join(ROOT, s.dir);
+        const items = listRuns(dirAbs, 5).map((r) => ({
+          id: r.id, mode: r.mode, started_at: r.started_at,
+          duration_ms: r.duration_ms, added: r.added,
+          pages: r.pages, reached_end: !!r.reached_end,
+          images: r.images, errors: (r.errors || []).length,
+        }));
+        out.push({ key: s.key, label: s.label, dir: s.dir, pending: loadRetry(dirAbs).length, items });
+      }
+      return sendJson(res, { ok: true, runs: out });
+    } catch (e) { return fail(res, 400, e.message); }
   }
 
   if (p === '/api/imported/delete') {

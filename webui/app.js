@@ -89,7 +89,7 @@ async function refreshState() {
     return;
   }
   renderEnv(); renderLogin(); renderSessions(); renderImported();
-  renderExportForm(); renderExports(); renderRunTable(); renderJobs();
+  renderExportForm(); renderExports(); renderRunTable(); renderJobs(); renderRuns();
   $('#rootPath').textContent = STATE.root;
   // 真实端口要显眼：文档里写的是 8787，但被占用/被系统保留时服务会自己往后挪，
   // 用户照着文档敲 8787 会连不上（本机实测过 8787 直接 EACCES）。
@@ -505,12 +505,25 @@ function renderImported() {
   }));
 }
 
+/* 导入结果里的完整性校验（P0-3）：包带 sha256 清单就会逐个对。
+   对不上要说清楚"哪几件"，不能只说"导入成功"让人以为一切正常。 */
+function integrityToast(r) {
+  const it = r && r.integrity;
+  if (!it || !it.checked) return;
+  if (it.ok) { toast(`包校验通过：${it.files} 个文件都对得上`, 'ok'); return; }
+  const bits = [];
+  if (it.missing.length) bits.push(`少了 ${it.missing.length} 个（如 ${it.missing[0]}）`);
+  if (it.changed.length) bits.push(`${it.changed.length} 个内容与清单不一致（如 ${it.changed[0]}）`);
+  toast('⚠ 这个包不完整：' + bits.join('；') + '。已按现有内容导入，建议让对方重新导出一份', 'bad');
+}
+
 async function doImportPath(p) {
   if (!p) return toast('先填一个路径', 'bad');
   toast('正在加载…');
   try {
     const r = await api('/api/import', { method: 'POST', json: { path: p } });
     toast('已导入 ' + r.sessions.length + ' 个会话（' + r.batch + '）', 'ok');
+    integrityToast(r);
     refreshState();
   } catch (e) { toast('导入失败：' + e.message, 'bad'); }
 }
@@ -527,6 +540,7 @@ async function uploadFile(file) {
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
     toast('已导入 ' + j.sessions.length + ' 个会话（' + j.batch + '）', 'ok');
+    integrityToast(j);
     refreshState();
   } catch (e) { toast('导入失败：' + e.message, 'bad'); }
 }
@@ -677,6 +691,43 @@ function renderRunTable() {
       if (e.status === 401) { showStep(2); toast('这一步需要登录 —— 请先在「2 授权登录」里登录', 'bad'); }
     }
   }));
+}
+
+/* 最近几次抓取的运行报告（P0-2）
+   与上面的「最近的任务」是两回事：那些只存在于本次服务进程里，重启就空；
+   这些是从 <dir>/_runs/*.json 读回来的，关掉窗口、隔天再打开也还在。 */
+async function renderRuns() {
+  const box = $('#runsTable');
+  if (!box) return;
+  let data;
+  try { data = await api('/api/runs'); }
+  catch (e) { $('#runsStat').textContent = '读取失败'; return; }
+  const rows = [];
+  let total = 0, pendingAll = 0;
+  for (const g of (data.runs || [])) {
+    pendingAll += g.pending || 0;
+    for (const r of (g.items || [])) {
+      total++;
+      const mode = { incr: '增量', full: '全量', rebuild: '重建' }[r.mode] || r.mode || '-';
+      const dur = r.duration_ms ? (r.duration_ms / 1000).toFixed(1) + 's' : '-';
+      const imgs = r.images || {};
+      const bad = (imgs.fail || 0) + (r.errors || 0);
+      rows.push(`<tr>
+        <td><b>${esc(g.label)}</b><br><span class="dim">${esc(r.id || '')}</span></td>
+        <td>${esc(mode)}<br><span class="dim">${esc(r.started_at ? r.started_at.slice(0, 16).replace('T', ' ') : '')} · ${esc(dur)}</span></td>
+        <td class="num">新增 ${nfmt(r.added || 0)}<br><span class="dim">翻 ${nfmt(r.pages || 0)} 页${r.reached_end ? ' · 已到底' : ' · 未到底'}</span></td>
+        <td class="num">新下 ${nfmt(imgs.ok || 0)}<br><span class="dim">跳过 ${nfmt(imgs.skip || 0)} · 失败 ${nfmt(imgs.fail || 0)}</span></td>
+        <td>${bad ? '<span class="tag warn">' + nfmt(bad) + ' 处待查</span>' : '<span class="tag ok">正常</span>'}</td>
+      </tr>`);
+    }
+  }
+  box.innerHTML = `
+    <thead><tr><th>会话</th><th>模式</th><th>消息</th><th>图片</th><th>结果</th></tr></thead>
+    <tbody>${rows.join('') ||
+      '<tr><td colspan="5" class="dim">还没有抓取记录（跑一次备份就会留下）</td></tr>'}</tbody>`;
+  $('#runsStat').textContent = total
+    ? `共 ${total} 次 · 待重试 ${pendingAll} 项`
+    : '暂无';
 }
 
 function renderJobs() {
