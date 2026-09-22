@@ -119,6 +119,13 @@ function codeFiles() {
       out.push({ from: path.join(TPL, name), to: 'assets/' + name });
     }
   }
+  // 许可与使用限制：MIT 明确要求「版权声明必须随副本一起分发」，
+  // 而这个 Skill / 分享包本身**就是一份副本** —— 只放在仓库根是不合规的，必须随包发出去。
+  // （README 不进包：包里已经有 SKILL.md / 先读我.md / 新手使用提示词.md 三份入口文档了。）
+  for (const name of ['LICENSE', '使用限制.md']) {
+    const f = path.join(ROOT, name);
+    if (fs.existsSync(f)) out.push({ from: f, to: name });
+  }
   out.push({ from: path.join(ROOT, '查看备份.html'), to: 'assets/查看备份.html' });
   return out;
 }
