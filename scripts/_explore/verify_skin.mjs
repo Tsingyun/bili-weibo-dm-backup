@@ -151,11 +151,43 @@ await page.waitForTimeout(500);
 head('=== 1. 切换控件与「跟随数据源自动匹配」 ===');
 {
   const btns = await page.$$eval('#skinSw button[data-skin]', ns => ns.map(n => n.dataset.skin));
-  ok('侧栏有皮肤切换控件，三个选项 = 原版 / 微博 / B站',
+  ok('侧栏有页面风格控件，三个选项 = 原版 / 仿微博 / 仿B站',
     JSON.stringify(btns) === JSON.stringify(['plain', 'weibo', 'bili']), JSON.stringify(btns));
 
   const nSrc = await page.$$eval('#srcSw button[data-src]', ns => ns.length);
   ok('数据源切换没被挤掉（仍是 ' + SRC_KEYS.length + ' 个）', nSrc === SRC_KEYS.length, nSrc);
+
+  /* ---- 用户反馈：两排胶囊紧挨着、都叫「微博 / B站」，分不清哪个是切数据、哪个是换样子。
+     下面四条把这个坑钉住：位置分开、有标题说明、选项改过名、每项有 tooltip。 ---- */
+  const lbl = await page.$eval('#skinSw', n => {
+    const box = n.closest('.skinbox');
+    const l = box && box.querySelector('.skin-lbl');
+    return { box: !!box, txt: l ? l.textContent.replace(/\s+/g, '') : '' };
+  });
+  ok('风格切换有可见标题与说明（不再是两排无字胶囊）',
+    lbl.box && lbl.txt.indexOf('页面风格') >= 0 && lbl.txt.indexOf('只换样子') >= 0, lbl.txt);
+
+  const names = await page.$$eval('#skinSw button[data-skin]', ns => ns.map(n => n.textContent.trim()));
+  const srcNames = await page.$$eval('#srcSw button[data-src]', ns => ns.map(n => n.textContent.trim()));
+  ok('风格选项改名成 原版 / 仿微博 / 仿B站（不再与数据源同名，光看字就分得开）',
+    JSON.stringify(names) === JSON.stringify(['原版', '仿微博', '仿B站'])
+      && !names.some(t => srcNames.indexOf(t) >= 0),
+    JSON.stringify(names) + ' vs 数据源 ' + JSON.stringify(srcNames));
+
+  const geo = await page.evaluate(() => {
+    const a = document.querySelector('#srcSw').getBoundingClientRect();
+    const b = document.querySelector('#skinSw').getBoundingClientRect();
+    const mid = document.querySelector('.side-top');
+    const r = mid && mid.getBoundingClientRect();
+    /* 两块之间必须夹着标题行，而且垂直净距够大 —— 挨着摆才容易认错 */
+    return { gap: Math.round(b.top - a.bottom), between: !!(r && r.top >= a.bottom - 1 && r.bottom <= b.top + 1) };
+  });
+  ok('位置上分开了（中间夹着标题行，垂直净距 ' + geo.gap + 'px ≥ 20）',
+    geo.between && geo.gap >= 20, '夹着 title 行？' + geo.between + ' / 净距 ' + geo.gap);
+
+  const tips = await page.$$eval('#skinSw button[data-skin]', ns => ns.map(n => (n.title || '').length));
+  ok('每个风格选项都有 title 说明（鼠标停一下就知道是干什么的）',
+    tips.length === 3 && tips.every(n => n >= 8), JSON.stringify(tips));
 
   const cur = await page.$eval('#srcSw button[aria-pressed="true"]', n => n.dataset.src);
   ok('首屏皮肤 = 按当前数据源自动匹配（' + cur + ' → ' + expectSkin(cur) + '）',
@@ -439,6 +471,41 @@ head('=== 6. 对比度（WCAG 实算）===');
     const sb = await css(page, '.sidebar', ['backgroundColor']);
     const cs = contrast(st.color, sb.backgroundColor);
     ok('微博 · 侧栏汇总正文 vs 深色侧栏底 ≥ 4.5（实测 ' + cs + ':1）', cs >= 4.5, cs);
+
+    /* ⚠ 别只挑自己想到的选择器 —— 上一轮就是这么漏掉品牌行的：
+       只量了 .stats，而 .brand / #title 因为「自己不声明 color、靠继承」拿到的是
+       body 上算完的 #2b333f，压在深色侧栏上 1.04:1（等于看不见）。
+       这里改成**系统扫**：侧栏里所有带直接文字的节点，逐个量对比度取最小值。 */
+    const sweep = await page.evaluate(() => {
+      const parse = s => (String(s).match(/[\d.]+/g) || []).map(Number).slice(0, 3);
+      const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+      const ratio = (a, b) => { const A = lum(parse(a)), B = lum(parse(b));
+        const hi = Math.max(A, B), lo = Math.min(A, B); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
+      const bgOf = el => { let n = el; while (n && n !== document.documentElement) {
+          const bg = getComputedStyle(n).backgroundColor;
+          if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg; n = n.parentElement; }
+        return 'rgb(255,255,255)'; };
+      const sb = document.querySelector('.sidebar'), sbr = sb.getBoundingClientRect();
+      let worst = { r: 99, who: '' }, n = 0, checked = 0;
+      sb.querySelectorAll('*').forEach(el => {
+        const r0 = el.getBoundingClientRect();
+        if (!r0.width || !r0.height || r0.bottom < sbr.top || r0.top > sbr.bottom) return;
+        /* 只看「自己直接带可见文字」的节点，避免把容器也算进来 */
+        const txt = [...el.childNodes].filter(x => x.nodeType === 3).map(x => x.textContent.trim()).join('');
+        if (txt.length < 2) return;
+        if (/^(ALL|none)$/i.test(getComputedStyle(el).display)) return;
+        n++;
+        const cs2 = getComputedStyle(el);
+        const r = ratio(cs2.color, bgOf(el));
+        checked++;
+        if (r < worst.r) worst = { r, who: el.className || el.id || el.tagName, fs: cs2.fontSize, op: cs2.opacity };
+      });
+      return { n: checked, worst };
+    });
+    ok('微博 · 侧栏**所有**带文字的元素逐个扫，最差也有 4.5:1（共 ' + sweep.n + ' 个；'
+      + '最差是 ' + sweep.worst.who + ' @' + sweep.worst.fs + ' = ' + sweep.worst.r + ':1）',
+      sweep.n >= 8 && sweep.worst.r >= 4.5, JSON.stringify(sweep.worst));
   }
 
   await goSkin('bili');
@@ -587,6 +654,39 @@ head('=== 9. 皮肤模式下高清截图导出不受影响 ===');
   ok('退出多选模式后勾选框清干净（皮肤模式没留下残影）',
     await page.locator('#chat .shotck').count() === 0);
   try { fs.rmSync(DL, { recursive: true, force: true }); } catch (e) {}
+}
+
+/* ============================================================
+   10. 窄屏：新加的这一块不能把「限高横条」撑高
+   ⚠ .sidebar 在 ≤980px 会变成横向吸附条，并且有 max-height 硬上限
+     —— 当初不加限高时它长到 437px，把手机屏挡掉一大半（有测试记录）。
+     这次往侧栏里加了「页面风格」一整块，必须回头验一遍。
+   ============================================================ */
+head('=== 10. 窄屏（390px）下侧栏仍受限高约束 ===');
+{
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(320);
+  const m = await page.evaluate(() => {
+    const sb = document.querySelector('.sidebar');
+    const cs = getComputedStyle(sb);
+    const sr = sb.getBoundingClientRect();
+    const sw = document.querySelector('#skinSw').getBoundingClientRect();
+    /* ⚠ 光判断「渲染出来了」不够（width/height > 0 只证明它在 DOM 里）：
+       限高横条是可以内部滚动的，控件完全可能被推到可视区外面，
+       那样手机上就得先滚这条细条才找得到 —— 必须判它在**可视框内**。 */
+    return {
+      h: Math.round(sr.height), max: cs.maxHeight, dir: cs.flexDirection,
+      inView: sw.top >= sr.top - 0.5 && sw.bottom <= sr.bottom + 0.5 && sw.height > 0,
+      over: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+  ok('侧栏仍是横向限高条（max-height ' + m.max + '，实测高 ' + m.h + 'px ≤ 上限）',
+    m.dir === 'row' && m.max === '150px' && m.h <= 151, JSON.stringify(m));
+  ok('窄屏下「页面风格」就在可视区内（不用先滚这条细条才找得到）', m.inView, JSON.stringify(m));
+  ok('窄屏下没有横向溢出（scrollWidth - innerWidth = ' + m.over + '）', m.over <= 0, m.over);
+
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  await page.waitForTimeout(300);
 }
 
 /* ---------- 收尾：别把偏好留给别的套件 ---------- */

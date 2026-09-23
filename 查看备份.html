@@ -853,9 +853,22 @@ html[data-theme="dark"]{
        那是这个站自己的招牌配色，想读得更清楚随时可切回「原版」。
    ========================================================== */
 
-/* ---------- 皮肤切换控件：直接复用数据源切换条的样子，只把间距收紧 ---------- */
-#skinSw{margin-top:-4px;margin-bottom:11px}
+/* ---------- 页面风格切换控件 ----------
+   与上面的「数据源」刻意分开摆，并且自带标题 + 说明（详见 HTML 里的注释）；
+   底色换成 --chip，跟数据源那条 tab 条看起来就不是一个东西。 */
+.skinbox{display:flex;flex-direction:column;gap:6px}
+.skin-lbl{display:flex;align-items:baseline;gap:6px;font-size:10.5px;font-weight:700;
+  letter-spacing:.7px;color:var(--muted);opacity:.75}
+.skin-lbl .hint{font-weight:400;letter-spacing:0;font-size:11px}
+#skinSw{margin-bottom:0;background:var(--chip)}
 #skinSw button{font-weight:500}
+@media (max-width:980px){
+  /* 窄屏侧栏是**限高横条**（max-height:190px，见 .sidebar 那段注释）：
+     这一块要跟着横过来，并把说明收掉，别把高度顶出去 */
+  .skinbox{flex-direction:row;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
+  .skinbox .srcsw{flex:1 1 auto;min-width:0}
+  .skin-lbl .hint{display:none}
+}
 
 /* ---------- 仿站会话头：只在皮肤模式下出现 ----------
    真实聊天窗口顶部都有对方的名字，这一块是「像不像」的关键。
@@ -924,6 +937,12 @@ html[data-skin="weibo"]:not([data-theme="dark"]) .sidebar{
   --text:#e8eaed; --muted:#a3a7ae; --muted-strong:#c2c7cd;
   --chip:#3a3c42; --accent:#ffb066; --link:#ffb066;
   --chip-on:#292b2e;       /* 一手 .sessionlist.active{background:#292b2e} */
+  /* ⚠ 这一句不能省：color 是**按计算值继承**的 —— body 上的 color:var(--text)
+     早就解析成了浅色皮肤的字色 #2b333f，后代拿到的是算完的颜色而不是 var() 表达式。
+     所以光重设 --text 只对「自己声明了 color:var(--text)」的元素生效（.stats/.bubble… 没事），
+     靠继承拿颜色的元素（品牌行 .brand / #title）还是深灰压深灰 —— 实测 1.04:1，等于看不见。
+     在 .sidebar 上声明一次，继承链从这里重新解析。 */
+  color:var(--text);
   background:#33353a;border-right:1px solid #2c2e31;
 }
 html[data-skin="weibo"]:not([data-theme="dark"]) .sidebar .chip[aria-pressed="true"]{
@@ -1027,17 +1046,29 @@ html[data-skin="bili"] .day span{background:none;border:0;padding:0}
       <button type="button" role="tab" data-src="bili" aria-pressed="false">B站</button>
     </div>
 
-    <!-- 页面风格：原版 = 本工具自己的样子；微博 / B站 = 照各自站点的私信窗口排版。
-         没手动选过时按数据源自动匹配（B站源→B站，其余→微博），选过就固定记住。 -->
-    <div class="srcsw" id="skinSw" role="tablist" aria-label="切换页面风格">
-      <button type="button" role="tab" data-skin="plain" aria-pressed="false">原版</button>
-      <button type="button" role="tab" data-skin="weibo" aria-pressed="false">微博</button>
-      <button type="button" role="tab" data-skin="bili" aria-pressed="false">B站</button>
-    </div>
-
     <div class="side-top">
       <div class="brand"><i class="dot"></i><span id="title">微博私信备份</span></div>
       <button class="iconbtn" id="themeBtn" title="切换深浅主题">🌗</button>
+    </div>
+
+    <!-- 页面风格：只换聊天窗口的**样子**，不动数据。
+         ⚠ 原来它紧挨着上面的「数据源」摆，两排胶囊都写着「微博 / B站」，谁看谁懵；
+         现在挪到标题行下面（跟 🌗 主题按钮同一组 —— 都是「外观」），并配上标题与说明。
+         选项也改名成「仿微博 / 仿B站」，不再和数据源那条同名，从名字上就分得开。
+         没手动选过时按数据源自动匹配（B站源→仿B站，其余→仿微博），选过就固定记住。 -->
+    <div class="skinbox">
+      <div class="skin-lbl">
+        <span>页面风格</span>
+        <span class="hint">只换样子，不动数据</span>
+      </div>
+      <div class="srcsw" id="skinSw" role="tablist" aria-label="切换页面风格">
+        <button type="button" role="tab" data-skin="plain" aria-pressed="false"
+                title="本工具自己的样子（浅色 / 深色主题都还在）">原版</button>
+        <button type="button" role="tab" data-skin="weibo" aria-pressed="false"
+                title="照微博聊天网页版的私信窗口排版：我方绿气泡、对方浅灰气泡、方头像、深色会话列表">仿微博</button>
+        <button type="button" role="tab" data-skin="bili" aria-pressed="false"
+                title="照 B站私信页排版：我方品牌蓝气泡、气泡斜切角、正圆头像">仿B站</button>
+      </div>
     </div>
 
     <div class="stats" id="stats">载入中…</div>
