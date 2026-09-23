@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>微博私信 · 会话页设计稿</title>
+<!--
+  仿微博私信会话页（设计稿 / 可直接打开预览，零依赖、离线可用）
+  ══════════════════════════════════════════════════════════════
+  视觉规格全部来自一手证据，不是凭印象画的：
+  · 微博 UDC《新版微博App聊天界面优化经验总结》（uisdc.com/?p=201714）
+    - 我方气泡 = 微博蓝，微信才是绿；旧版微博的绿气泡已在新版弃用
+    - 圆角 = 单行气泡高度的 1/4；气泡角平滑、与头像关联，不是尖锐三角
+    - 间距分两级：同侧连发小间距、换人大间距（"间距关系从一种新增至两种"）
+    - 气泡与头像、气泡角与头像的间距 = 1 个单位
+  · 官方定稿截图逐像素取色（_ref/wbim/u28.jpg）：
+    - 我方蓝 #3da7fb（实测 mode #3ea8fc/#3da7fb）
+    - 聊天背景 #ececec；导航栏 #f5f5f5（比聊天区浅）+ 底部发丝线
+    - 输入栏 #f9f9f9 + 顶部发丝线，输入框纯白描边圆角
+    - 导航文字纯黑（#000 实测）；头像正圆 ≈34pt；气泡/头像间距 ≈10pt
+  · 微博橙（#ff8200）：属于信息流/品牌层。会话页 chrome（导航、气泡、输入栏）
+    官方截图中**完全不用橙** —— 这正是微博私信与"橙色=微博"刻板印象的区别。
+  · 唯一一处偏离原站：时间分割线原站灰度极浅（#ececec 底上约 1.6:1），
+    按"保形状、换可读色"纪律调成 #8a8a8a（≈2.5:1）。
+  · 明确避开的微信特征：绿色气泡、纯白导航栏、胶囊底色时间条、
+    尖锐三角气泡角、方头像。
+-->
+<style>
+  :root{
+    --wb-blue:#3da7fb;      /* 我方气泡：微博蓝（取自官方定稿图） */
+    --chat-bg:#ececec;      /* 聊天背景 */
+    --nav-bg:#f5f5f5;       /* 导航栏：比聊天区浅一档，不是纯白 */
+    --bar-bg:#f9f9f9;       /* 输入栏底 */
+    --peer:#ffffff;         /* 对方气泡：纯白 */
+    --ink:#1a1a1a;          /* 正文黑 */
+    --nav-ink:#262626;      /* 导航字 */
+    --muted:#8a8a8a;        /* 时间/描述灰（可读性修正后） */
+    --line:#e2e2e2;         /* 发丝线 */
+    --icon:#7d7d7d;         /* 输入栏线性图标 */
+    --av:34px;              /* 头像尺寸 */
+    --gap:10px;             /* 气泡与头像间距（官方：1 个单位） */
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:#e9eaec;
+    font:16px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    display:flex;justify-content:center;align-items:center;
+  }
+  /* 手机画框：移动端全屏，桌面端居中成机身 */
+  .phone{
+    width:100%;max-width:414px;height:100dvh;
+    background:var(--chat-bg);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  @media (min-width:480px){
+    .phone{
+      height:min(820px,calc(100dvh - 56px));
+      border-radius:28px;
+      box-shadow:0 18px 48px rgba(0,0,0,.20),0 2px 8px rgba(0,0,0,.08);
+    }
+  }
+
+  /* ── 顶部导航栏：三段式，左「‹ 消息」连体返回 ─────────────── */
+  .nav{
+    position:relative;flex:none;
+    height:45px;display:flex;align-items:center;
+    padding:0 14px;gap:8px;
+    background:var(--nav-bg);           /* 与聊天区同族浅灰，非纯白 */
+    border-bottom:1px solid var(--line);
+  }
+  .nav .back{
+    display:flex;align-items:center;gap:1px;
+    border:0;background:none;padding:0;
+    font-size:16px;color:var(--nav-ink);cursor:pointer;
+  }
+  .nav .back svg{width:21px;height:21px;display:block}
+  .nav .t{
+    position:absolute;left:50%;transform:translateX(-50%);
+    margin:0;font-size:17px;font-weight:500;color:var(--ink);
+    max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .nav .act{
+    margin-left:auto;border:0;background:none;padding:0;
+    font-size:16px;color:var(--nav-ink);cursor:pointer;
+  }
+
+  /* ── 消息区 ─────────────────────────────────────────────── */
+  #chat{flex:1;overflow-y:auto;padding:2px 14px 16px;scrollbar-width:thin}
+  .row{display:flex;align-items:flex-start;gap:var(--gap);margin-top:18px}  /* 换人：大间距 */
+  .row.g{margin-top:6px}                                                    /* 同侧连发：小间距 */
+  .row.me{flex-direction:row-reverse}
+  .av{
+    flex:none;width:var(--av);height:var(--av);border-radius:50%;   /* 正圆头像 */
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;color:#fff;user-select:none;
+  }
+  .peer .av{background:linear-gradient(135deg,#ffb56b,#e8834f)}
+  .me   .av{background:linear-gradient(135deg,#5a6472,#333a44)}
+  .col{min-width:0;max-width:72%;display:flex;flex-direction:column}
+  .me .col{align-items:flex-end}
+
+  .bubble{
+    position:relative;
+    padding:9px 13px;border-radius:10px;      /* 官方：圆角≈单行高度的 1/4 */
+    font-size:16px;line-height:1.42;
+    word-break:break-word;
+  }
+  /* 气泡角：平滑小弧角（旋转圆角方块），非微信式尖锐三角 */
+  .row .bubble.b::before{
+    content:"";position:absolute;top:7px;width:14px;height:14px;
+    background:inherit;border-radius:3px;transform:rotate(45deg);
+  }
+  .row.me   .bubble.b::before{right:-5px;border-top-right-radius:13px}
+  .row.peer .bubble.b::before{left:-5px;border-top-left-radius:13px}
+  .peer .bubble.b{background:var(--peer);color:var(--ink)}
+  .me   .bubble.b{background:var(--wb-blue);color:#fff}
+
+  /* 链接卡片：白底圆角卡 + 左缩略图（官方定稿中的 海淘派/音乐 卡样式） */
+  .card{
+    display:flex;gap:10px;align-items:center;
+    background:var(--peer);border-radius:10px;padding:10px;
+    width:250px;max-width:100%;
+  }
+  .card .thumb{
+    flex:none;width:46px;height:46px;border-radius:6px;
+    background:linear-gradient(135deg,#ffcf8f,#f28d5d);
+    display:flex;align-items:center;justify-content:center;color:#fff;
+  }
+  .card .tt{font-size:15px;font-weight:500;color:var(--ink);line-height:1.3}
+  .card .ds{
+    font-size:13px;color:var(--muted);line-height:1.35;margin-top:3px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+
+  /* 图片消息：裸图圆角，不套气泡（官方定稿如此） */
+  .pic{
+    width:190px;height:126px;border-radius:8px;
+    background:linear-gradient(135deg,#a8cdf5,#5f8fd0);
+    display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.85);
+  }
+
+  /* 时间 / 系统提示：居中细字、无胶囊底色（微信式胶囊是明确避开项） */
+  .time,.sys{
+    text-align:center;font-size:12px;color:var(--muted);
+    margin:16px 0 2px;user-select:none;
+  }
+  .sys{margin-top:14px}
+
+  /* ── 底部输入栏：语音 · 输入框(内嵌表情) · 时钟 · ⊕ ────────── */
+  .bar{
+    flex:none;display:flex;align-items:center;gap:11px;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    background:var(--bar-bg);border-top:1px solid var(--line);
+  }
+  .bar .ibtn{
+    flex:none;width:31px;height:31px;padding:0;border:0;background:none;
+    color:var(--icon);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+  .bar .ibtn svg{width:27px;height:27px;display:block}
+  .field{
+    flex:1;min-width:0;height:38px;display:flex;align-items:center;
+    background:#fff;border:1px solid #e4e4e4;border-radius:8px;padding:0 8px 0 12px;
+  }
+  .field input{
+    flex:1;min-width:0;border:0;outline:none;background:none;
+    font-size:15px;color:var(--ink);
+  }
+  .field input::placeholder{color:#b3b3b3}
+  .field svg{flex:none;width:22px;height:22px;color:#b3b3b3}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <header class="nav">
+    <button class="back" type="button" aria-label="返回消息列表">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4.5 7 12l7.5 7.5"/></svg>消息
+    </button>
+    <h1 class="t">岁己SUI</h1>
+    <button class="act" type="button">设置</button>
+  </header>
+
+  <main id="chat" aria-label="聊天内容"></main>
+
+  <footer class="bar">
+    <button class="ibtn" type="button" aria-label="语音输入">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <circle cx="16" cy="16" r="12.5"/>
+        <path d="M13.2 12.8a4.6 4.6 0 0 0 0 6.4M10.4 10.2a8.4 8.4 0 0 0 0 11.6"/>
+        <path d="M18.8 12.8a4.6 4.6 0 0 1 0 6.4M21.6 10.2a8.4 8.4 0 0 1 0 11.6"/>
+      </svg>
+    </button>
+    <div class="field">
+      <input type="text" placeholder="发消息…" aria-label="输入消息">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9.2"/><circle cx="8.8" cy="10" r="0.6" fill="currentColor"/><circle cx="15.2" cy="10" r="0.6" fill="currentColor"/>
+        <path d="M8.2 13.8a4.8 4.8 0 0 0 7.6 0"/>
+      </svg>
+    </div>
+    <button class="ibtn" type="button" aria-label="聊天记录">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="16" cy="16" r="12.5"/><path d="M16 9.5V16l4.6 2.6"/>
+      </svg>
+    </button>
+    <button class="ibtn" type="button" aria-label="更多功能">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+        <circle cx="16" cy="16" r="12.5"/><path d="M16 10.5v11M10.5 16h11"/>
+      </svg>
+    </button>
+  </footer>
+</div>
+
+<script>
+/* 模拟对话数据（演示用，与备份工具数据完全无关） */
+const ME_AV = '我', PEER_AV = '岁';
+const MSGS = [
+  { k:'time', t:'19:11' },
+  { k:'text', side:'peer', name:PEER_AV, txt:'今晚直播歌回！歌单整理好啦，快来点歌～' },
+  { k:'card', side:'peer', name:PEER_AV,
+    title:'歌回点歌单（长期更新）', desc:'今晚 20:00 开播，评论区回复歌名就能点歌，先到先得哦～' },
+  { k:'text', side:'me', name:ME_AV, txt:'来晚了！《雨停了》还能点吗' },
+  { k:'text', side:'me', name:ME_AV, txt:'不行的话我蹲下一轮 (˃̣̣̥⌓˂̣̣̥)' },
+  { k:'pic',  side:'peer', name:PEER_AV },
+  { k:'text', side:'peer', name:PEER_AV, txt:'还能点！已经排上啦，第 7 个～' },
+  { k:'time', t:'19:15' },
+  { k:'text', side:'me', name:ME_AV, txt:'好耶！到时候准时蹲直播 (๑•̀ㅂ•́)و✧' },
+  { k:'sys',  t:'直播开始后将通过私信提醒你' },
+];
+
+const chat = document.getElementById('chat');
+let prevSide = null;
+for (const m of MSGS) {
+  if (m.k === 'time' || m.k === 'sys') {
+    const d = document.createElement('div');
+    d.className = m.k; d.textContent = m.t;
+    chat.appendChild(d); prevSide = null;           /* 分隔线后重新开组 */
+    continue;
+  }
+  const row = document.createElement('div');
+  row.className = 'row ' + m.side + (m.side === prevSide ? ' g' : '');
+  const av = document.createElement('div');
+  av.className = 'av'; av.textContent = m.name;
+  const col = document.createElement('div'); col.className = 'col';
+  if (m.k === 'text') {
+    const b = document.createElement('div');
+    b.className = 'bubble b'; b.textContent = m.txt;
+    col.appendChild(b);
+  } else if (m.k === 'card') {
+    const c = document.createElement('div'); c.className = 'card';
+    c.innerHTML =
+      '<div class="thumb"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">' +
+      '<path d="M9 18.5V6.8l9-1.8v10.5"/>' +
+      '<circle cx="6.8" cy="18.5" r="2.6"/><circle cx="15.8" cy="15.5" r="2.6"/></svg></div>' +
+      '<div><div class="tt"></div><div class="ds"></div></div>';
+    c.querySelector('.tt').textContent = m.title;
+    c.querySelector('.ds').textContent = m.desc;
+    col.appendChild(c);
+  } else if (m.k === 'pic') {
+    const p = document.createElement('div'); p.className = 'pic';
+    p.innerHTML = '<svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor">' +
+      '<path d="M9 18.5V6.8l9-1.8v10.5"/>' +
+      '<circle cx="6.8" cy="18.5" r="2.6"/><circle cx="15.8" cy="15.5" r="2.6"/></svg>';
+    col.appendChild(p);
+  }
+  row.appendChild(av); row.appendChild(col);
+  chat.appendChild(row);
+  prevSide = m.side;
+}
+chat.scrollTop = chat.scrollHeight;
+</script>
+</body>
+</html>
