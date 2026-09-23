@@ -800,6 +800,218 @@ html[data-theme="dark"]{
   .rhbars{height:46px}
   .wc{padding:11px 9px;gap:3px 9px;min-height:84px}
 }
+
+/* ==========================================================
+   页面风格皮肤：原版 / 微博 / B站
+   ----------------------------------------------------------
+   目标只有一个：让这份离线备份看起来像那两个站的私信窗口。
+   所以取值不靠眼估 —— 两套都从各自站点的**一手前端产物**里抄：
+
+   【微博】api.weibo.com/chat/（微博聊天 PC 网页版）的 pcweibochat 样式包
+     .message .chat-content .message-main .content
+        {background:#fafafa;border-radius:4px;padding:6px 10px;
+         line-height:24px;font-size:14px;max-width:330px;min-height:36px}
+     .message .chat-content .self .content{background-color:#b2e281}   ← 我方=绿气泡
+     .message .chat-content .self .content:before{right:-12px;
+        border-left-color:#b2e281}                                    ← 气泡右侧小三角
+     .message .chat-content .message-main .avatar{float:left;margin-left:15px;
+        border-radius:3px}                                            ← 头像是圆角方，不是圆
+     .message .chat-content .time span{padding:4px 6px;border-radius:3px;
+        background-color:#dcdcdc}                                     ← 时间=灰底药丸
+     .chatbox{background:#fff;border-radius:5px}
+     .chatbox .msglist{width:320px;background:#33353a}                 ← 深色会话列表
+     .chatlist .sessionlist{height:80px;border-bottom:1px solid #2c2e31}
+     .chatlist .sessionlist.active{background-color:#292b2e}  :hover{#3a3c42}
+     .chatlist .sessionlist .line{background:#ff8f2c;width:2px}        ← 选中=橙指示
+     .chatlist .content-bottom .num{background:#ff8f2c;border-radius:9.5px} ← 未读=橙
+     主色 #ff8200（该包里出现 24 次）；浅底 #f2f2f5（出现 45 次）
+     灰阶 #2b333f / #55595e / #696e78 / #939393 / #a3a7ae / #d9d9d9
+     ⚠ 注意这是「微博聊天」客户端的样式；它当年就是以微信 PC 版为蓝本做的，
+       所以「我方绿气泡 + 右侧小三角」是原站真实长相，不是我编的。
+
+   【B站】message.bilibili.com 的 message-pc 样式包
+     :root{--brand_blue:#00aeec(--Lb5); --brand_blue_thin:#dff6fd(--Lb1);
+           --brand_pink:#f69(--Pi5); --bg1:#fff; --bg2:#f6f7f8; --bg3:#f1f2f3;
+           --text1:#18191c; --text2:#61666d; --text3:#9499a0; --line_regular:#e3e5e7}
+     ._MsgText_{background:var(--bg1);color:var(--text1);border-radius:0 16px 16px;
+        padding:8px 16px;margin-right:10px}                           ← 对方：白底、左上切角
+     ._MsgTextIsMe_{background:var(--brand_blue);color:var(--text_white);
+        border-radius:16px 0 16px 16px;margin-left:10px}              ← 我方：实心品牌蓝、右上切角
+     ._Msg__Wrap{display:flex}  ._MsgIsMe_ ._Msg__Wrap{flex-direction:row-reverse}
+     ._Msg__Avatar{border-radius:50%;width:30px;height:30px;margin-right:10px}
+     ._MsgIsMe_ ._Msg__Avatar{margin-left:10px;margin-right:0}
+     ._Msg__SenderName{color:var(--text3);font-size:13px}              ← 昵称在气泡上方
+     ._Msg__Time{text-align:center;color:var(--text2);padding:16px 0;font-size:12px} ← 时间居中
+     ._ParagraphText_{max-width:398px;padding:8px 16px;font-size:14px}
+
+   两条纪律（不因为「要像原站」就破例）：
+     · 颜色全部走 CSS 变量。侧栏、卡片、统计面板、灯箱、媒体墙会自动跟着换肤，
+       不必逐个组件重写 —— 少写一遍就少漏一处。
+     · 原站对比度不够的地方**不照抄**：微博时间药丸是白字压 #dcdcdc（实测 1.37:1），
+       这里保留药丸形状、换成深字（5.14:1）；要人读的链接另取同色系深一档并实测。
+       唯一如实照搬的是 B站我方气泡 #00aeec + 白字（实测 2.54:1）——
+       那是这个站自己的招牌配色，想读得更清楚随时可切回「原版」。
+   ========================================================== */
+
+/* ---------- 皮肤切换控件：直接复用数据源切换条的样子，只把间距收紧 ---------- */
+#skinSw{margin-top:-4px;margin-bottom:11px}
+#skinSw button{font-weight:500}
+
+/* ---------- 仿站会话头：只在皮肤模式下出现 ----------
+   真实聊天窗口顶部都有对方的名字，这一块是「像不像」的关键。
+   它由 render() 注入到 #chat 里（所以重绘后仍在）；它不是 .msg，
+   因此不会被多选、也不会进高清截图 —— 顺手就满足了导出纪律。 */
+.shead{display:none}
+html[data-skin="weibo"] .shead,
+html[data-skin="bili"] .shead{
+  display:flex;align-items:center;gap:10px;
+  position:sticky;top:0;z-index:30;
+  padding:10px 14px;margin:-22px -28px 14px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--panel) 93%,transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(12px);backdrop-filter:saturate(180%) blur(12px);
+}
+.shead .sav{
+  width:32px;height:32px;flex:none;border-radius:50%;object-fit:cover;
+  background:var(--chip);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted-strong);font-size:13px;font-weight:700;
+}
+html[data-skin="weibo"] .shead .sav{border-radius:3px}   /* 一手：头像是圆角方 */
+.shead .sn{font-weight:600;font-size:14.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 一个如实的标记：这是本机上的离线快照，不是那两个站的真实页面 */
+.shead .stag{
+  margin-left:auto;flex:none;font-size:11px;line-height:1;padding:5px 8px;border-radius:999px;
+  background:var(--chip);color:var(--muted-strong);border:1px solid var(--line);
+}
+@media (max-width:980px){
+  html[data-skin="weibo"] .shead,
+  html[data-skin="bili"] .shead{margin:-16px -14px 14px}
+}
+
+/* 皮肤模式下顺手把侧栏汇总正文提到 --muted-strong：
+   这里写的是条数 / 日期区间，12px 的 --muted 压在浅底上只有 3.0:1。
+   只动皮肤模式 —— 原版保持用户熟悉的样子。 */
+html[data-skin="weibo"] .stats,
+html[data-skin="bili"] .stats{color:var(--muted-strong)}
+
+/* ================= 微博皮肤 ================= */
+/* 配色只在浅色下生效：深色主题上套这套浅色底会变成「深底压深字」。
+   所以深色主题下只保留下面那一段**排版**，颜色仍用本工具自己的深色方案。 */
+html[data-skin="weibo"]:not([data-theme="dark"]){
+  --bg:#eee;               /* 一手 .chatbox .right{background:#eee} —— 聊天区底色 */
+  --panel:#fff;            /* 一手 .chatbox{background:#fff} */
+  --text:#2b333f;          /* 一手灰阶深色端 */
+  --muted:#939393;         /* 一手灰阶 */
+  --muted-strong:#696e78;  /* 一手灰阶（要人读的正文用这一档） */
+  --line:#d9d9d9;          /* 一手灰阶 */
+  --peer:#fafafa;          /* 一手 .content{background:#fafafa} */
+  --peer-text:#2b333f;
+  --me:#b2e281;            /* 一手 .self .content{background-color:#b2e281} */
+  --me-text:#2b333f;       /* 绿底必须深字：实测 8.7:1；照抄白字会直接看不见 */
+  --accent:#ff8200;        /* 微博主色橙（一手：出现 24 次） */
+  --chip:#f2f2f5;          /* 一手：出现 45 次的主浅底 */
+  --chip-on:#ff8f2c;       /* 一手：未读角标橙 */
+  --link:#a8471a;          /* 品牌橙加深一档：原橙压浅底只有 2.1:1，这里实测 5.2:1 */
+  --link-ink:#7d3410;
+  --c-me:#ff8200; --c-peer:#73859f;   /* 一手灰蓝 */
+  --hit:#ff8f2c;
+}
+/* 侧栏 = 微博聊天的深色会话列表（一手 .chatbox .msglist{background:#33353a}）。
+   变量就近覆盖 → 侧栏里的 chip / 输入框 / 按钮 / 月份轴全部自动转深色。 */
+html[data-skin="weibo"]:not([data-theme="dark"]) .sidebar{
+  --panel:#33353a; --bg:#3a3c42; --line:#43464c;
+  --text:#e8eaed; --muted:#a3a7ae; --muted-strong:#c2c7cd;
+  --chip:#3a3c42; --accent:#ffb066; --link:#ffb066;
+  --chip-on:#292b2e;       /* 一手 .sessionlist.active{background:#292b2e} */
+  background:#33353a;border-right:1px solid #2c2e31;
+}
+html[data-skin="weibo"]:not([data-theme="dark"]) .sidebar .chip[aria-pressed="true"]{
+  border-color:#ff8f2c;    /* 一手：选中态用橙色当指示（.line{background:#ff8f2c}） */
+}
+
+/* 聊天区排版：全部照一手 .message .chat-content */
+/* 一手：对方 .avatar{margin-left:15px} + .content{margin-left:10px} → 间距 10px；
+   我方 .self .avatar{margin:0 15px} → 间距 15px。两边不一样，分开写。 */
+html[data-skin="weibo"] .msg{gap:10px}
+html[data-skin="weibo"] .msg.me{gap:15px}
+html[data-skin="weibo"] .av,
+html[data-skin="weibo"] .av-fb{border-radius:3px;width:30px;height:30px}
+html[data-skin="weibo"] .body{max-width:min(70%,330px)} /* 一手 .content max-width:330px */
+html[data-skin="weibo"] .bubble{
+  border:0;border-radius:4px;padding:6px 10px;
+  line-height:24px;font-size:14px;min-height:36px;box-shadow:none;position:relative;
+}
+html[data-skin="weibo"] .msg.me .bubble{border-radius:4px}
+/* 一手：.self .content:before{right:-12px;border:6px solid transparent;border-left-color:#b2e281}
+   ⚠ 只画在**有底**的气泡上：.plain / .sys 是透明无框的（background:transparent!important），
+   给它们挂个实心小三角会凭空浮在那儿 —— 原来那条没排除，是个真 bug。 */
+html[data-skin="weibo"] .msg.me .bubble:not(.plain):not(.sys)::after{
+  content:"";position:absolute;top:12px;right:-12px;width:0;height:0;
+  border:6px solid transparent;border-left-color:var(--me);
+}
+/* 一手：.content:before{top:12px;right:100%;border:6px solid transparent;border-right-color:#fafafa}
+   —— 对方那条也有小三角，之前只抓了 .self 那条规则，漏了。 */
+html[data-skin="weibo"] .msg:not(.me) .bubble:not(.plain):not(.sys)::after{
+  content:"";position:absolute;top:12px;right:100%;width:0;height:0;
+  border:6px solid transparent;border-right-color:var(--peer);
+}
+/* 深色主题下 --me 是渐变，当 border-color 无效 → 把**我方**三角隐掉
+   （对方那条走 --peer，是纯色，深色下照样成立）。
+   选择器要带同样的 :not() 才压得住上面那条规则，别简化。 */
+html[data-theme="dark"][data-skin="weibo"] .msg.me .bubble:not(.plain):not(.sys)::after{display:none}
+/* 只有图 / 卡片的气泡（.plain）不能被上面的 padding 撑开（原规则没带 !important） */
+html[data-skin="weibo"] .bubble.plain{padding:0}
+html[data-skin="weibo"] .meta{font-size:12px;padding:0 2px 3px}
+html[data-skin="weibo"] .imgs img{max-width:min(250px,100%)}
+/* 日期分隔条 = 一手 .time span 的灰底药丸；横线去掉，字改深色（见顶部说明）
+   上下间距也照一手 .time{margin:7px auto} */
+html[data-skin="weibo"] .day{justify-content:center;margin:7px 0}
+html[data-skin="weibo"] .day::before,
+html[data-skin="weibo"] .day::after{display:none}
+html[data-skin="weibo"] .day span{
+  background:#dcdcdc;border:0;color:#55595e;border-radius:3px;padding:4px 6px;font-size:12px;
+}
+
+/* ================= B站皮肤 ================= */
+html[data-skin="bili"]:not([data-theme="dark"]){
+  --bg:#f1f2f3;            /* --bg3 */
+  --panel:#fff;            /* --bg1 */
+  --text:#18191c;          /* --text1 */
+  --muted:#9499a0;         /* --text3 */
+  --muted-strong:#61666d;  /* --text2 */
+  --line:#e3e5e7;          /* --line_regular */
+  --peer:#fff;             /* 一手 ._MsgText_{background:var(--bg1)} */
+  --peer-text:#18191c;
+  --me:#00aeec;            /* --brand_blue：我方气泡是实心品牌蓝 */
+  --me-text:#fff;          /* 一手 ._MsgTextIsMe_{color:var(--text_white)}；实测 2.54:1 */
+  --accent:#00aeec;
+  --chip:#f6f7f8;          /* --bg2 */
+  /* 选中态 / 链接另取官方蓝阶深一档：品牌蓝 #00aeec 压白底只有 2.54:1，
+     这两个位置都是**要读的字**，所以取 --Lb7 白字 5.99:1（见顶部纪律）。 */
+  --chip-on:#00699d;
+  --link:#00699d; --link-ink:#004b76;
+  --c-me:#00aeec; --c-peer:#f69;   /* --brand_pink */
+  --hit:#00aeec;
+}
+/* 聊天区排版：照一手 _MsgText_ / _Msg__* */
+html[data-skin="bili"] .msg{gap:10px}                   /* 一手 ._Msg__Avatar margin-right:10px */
+html[data-skin="bili"] .av,
+html[data-skin="bili"] .av-fb{width:30px;height:30px}    /* 一手 ._Msg__Avatar 30px 圆 */
+html[data-skin="bili"] .body{max-width:min(70%,398px)}   /* 一手 ._ParagraphText_ max-width:398px */
+html[data-skin="bili"] .bubble{
+  border:0;border-radius:0 16px 16px;padding:8px 16px;   /* 一手：左上切角 */
+  font-size:14px;line-height:1.5;box-shadow:none;
+}
+html[data-skin="bili"] .msg.me .bubble{border-radius:16px 0 16px 16px}   /* 一手：右上切角 */
+html[data-skin="bili"] .bubble.plain{padding:0}
+html[data-skin="bili"] .meta{font-size:13px;color:#9499a0;padding:0 0 4px}  /* ._Msg__SenderName */
+html[data-skin="bili"] .imgs img{max-width:min(300px,100%)}
+/* 日期分隔条 = 一手 ._Msg__Time：居中、无横线、浅灰小字 */
+html[data-skin="bili"] .day{justify-content:center;margin:0;padding:16px 0;font-size:12px;color:#61666d}
+html[data-skin="bili"] .day::before,
+html[data-skin="bili"] .day::after{display:none}
+html[data-skin="bili"] .day span{background:none;border:0;padding:0}
 </style>
 </head>
 <body>
@@ -813,6 +1025,14 @@ html[data-theme="dark"]{
     <div class="srcsw" id="srcSw" role="tablist" aria-label="切换备份来源">
       <button type="button" role="tab" data-src="weibo" aria-pressed="true">微博</button>
       <button type="button" role="tab" data-src="bili" aria-pressed="false">B站</button>
+    </div>
+
+    <!-- 页面风格：原版 = 本工具自己的样子；微博 / B站 = 照各自站点的私信窗口排版。
+         没手动选过时按数据源自动匹配（B站源→B站，其余→微博），选过就固定记住。 -->
+    <div class="srcsw" id="skinSw" role="tablist" aria-label="切换页面风格">
+      <button type="button" role="tab" data-skin="plain" aria-pressed="false">原版</button>
+      <button type="button" role="tab" data-skin="weibo" aria-pressed="false">微博</button>
+      <button type="button" role="tab" data-skin="bili" aria-pressed="false">B站</button>
     </div>
 
     <div class="side-top">
@@ -1236,6 +1456,16 @@ function resetDom(){
 
 var CUR_SRC = null;
 
+/* 页面风格皮肤（原版 / 微博 / B站）
+   ----------------------------------------------------------
+   pref = 用户手动选过的（空 = 没选过，按数据源自动匹配）
+   eff  = 当前实际生效的皮肤，render() 与跳转定位都要读它
+   localStorage 在 file:// 下会抛，所以一律裹 try（本项目统一做法）。 */
+var SKIN_KEY = 'dm-skin';
+var SKIN_ORDER = ['plain', 'weibo', 'bili'];
+var SKIN = { eff:'plain', pref:'' };
+try{ var _sk = localStorage.getItem(SKIN_KEY); if(_sk) SKIN.pref = _sk; }catch(e){}
+
 function boot(srcKey){
   var SRC = SOURCES[srcKey] || SOURCES.weibo;
   CUR_SRC = SRC.key;
@@ -1254,6 +1484,10 @@ function boot(srcKey){
 
   resetDom();
   bindSrcSwitch();
+  /* 皮肤要在 resetDom() 之后应用：快照里那份控件的 aria-pressed 是初始值，
+     每次重建都得重新点亮当前那一项。 */
+  bindSkinSwitch();
+  applySkin();
 
   var D = SRC.data;
   if(!D){
@@ -1708,10 +1942,11 @@ function boot(srcKey){
     return '<div class="av-fb">'+esc(name.slice(0,1))+'</div>';
   }
   function fixAvatars(){
-    Array.prototype.forEach.call(chat.querySelectorAll('img.av'), function(el){
+    /* .sav 是皮肤模式下会话头里的头像，坏图同样要退化成首字方块 */
+    Array.prototype.forEach.call(chat.querySelectorAll('img.av, img.sav'), function(el){
       el.onerror = function(){
         var d = document.createElement('div');
-        d.className = 'av-fb';
+        d.className = el.classList.contains('sav') ? 'sav sav-fb' : 'av-fb';
         d.textContent = el.dataset.fb || '?';
         if(el.parentNode) el.parentNode.replaceChild(d, el);
       };
@@ -2067,9 +2302,10 @@ function boot(srcKey){
 
   function render(keepScroll){
     var list = st.list;
-    if(!list.length){ chat.innerHTML = '<div class="empty">没有匹配的消息</div>'; return; }
+    var head = skinHeader();
+    if(!list.length){ chat.innerHTML = head + '<div class="empty">没有匹配的消息</div>'; return; }
     var start = Math.max(0, st.win), end = Math.min(list.length, start + CHUNK);
-    var html = '';
+    var html = head;
     if(start > 0) html += '<div class="more"><button id="moreTop">↑ 加载更早的 '+start.toLocaleString()+' 条</button></div>';
     var items = buildItems(start, end), last = null;
     for(var j=0;j<items.length;j++){
@@ -2112,7 +2348,8 @@ function boot(srcKey){
       var nodes = chat.querySelectorAll('.msg');
       var target = idx - st.win;
       if(nodes[target]){
-        var y = nodes[target].getBoundingClientRect().top + window.scrollY - 130;
+        var y = nodes[target].getBoundingClientRect().top + window.scrollY
+                  - 130 - skinHeadH();
         window.scrollTo({ top: y, behavior: block || 'auto' });
         nodes[target].style.transition = 'background .8s';
       }
@@ -2486,6 +2723,55 @@ function boot(srcKey){
     var saved = localStorage.getItem('dm-theme');
     if(saved) document.documentElement.setAttribute('data-theme', saved);
   }catch(e){}
+
+  /* ---------- 页面风格皮肤：状态与切换 ----------
+     取值依据、以及「哪些地方故意没照抄原站」都写在 CSS 顶部那段注释里。 */
+  function guessSkin(src){
+    var t = ((src && (src.key + ' ' + src.label + ' ' + src.title)) || '').toLowerCase();
+    return /bili|b站|哔哩/.test(t) ? 'bili' : 'weibo';
+  }
+  function applySkin(){
+    var eff = (SKIN_ORDER.indexOf(SKIN.pref) >= 0) ? SKIN.pref : guessSkin(SOURCES[CUR_SRC]);
+    SKIN.eff = eff;
+    document.documentElement.setAttribute('data-skin', eff);
+    var box = document.getElementById('skinSw');
+    if(box) Array.prototype.forEach.call(box.querySelectorAll('button[data-skin]'), function(b){
+      b.setAttribute('aria-pressed', b.dataset.skin === eff ? 'true' : 'false');
+    });
+    SHOT_PAL = null;   // 取色缓存必须跟着皮肤失效，否则导出图还是上一套配色
+  }
+  function bindSkinSwitch(){
+    var box = document.getElementById('skinSw');
+    if(!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('button[data-skin]'), function(b){
+      b.onclick = function(){
+        SKIN.pref = b.dataset.skin;
+        try{ localStorage.setItem(SKIN_KEY, SKIN.pref); }catch(e){}
+        applySkin();
+        render();      // 会话头只在皮肤模式下出现，切了得重绘一次
+      };
+    });
+  }
+  /* 仿站会话头（渲染在 #chat 最前面，见 render）。
+     带一个「本地备份」标记：这套皮肤的用途是「离线回看像不像原站」，
+     不该让它有机会被误当成微博 / B站 的真实页面。 */
+  function skinHeader(){
+    if(SKIN.eff !== 'weibo' && SKIN.eff !== 'bili') return '';
+    var nm = META.peer_name || '对方';
+    var av = META.peer_avatar_local || META.peer_avatar || '';
+    var face = av
+      ? '<img class="sav" src="' + esc(av) + '" data-fb="' + esc(nm.slice(0,1)) + '" alt="">'
+      : '<span class="sav">' + esc(nm.slice(0,1)) + '</span>';
+    return '<div class="shead">' + face +
+      '<span class="sn">' + esc(nm) + '</span>' +
+      '<span class="stag" title="这是本机上的离线备份快照，不是微博 / B站 的真实页面">本地备份</span>' +
+      '</div>';
+  }
+  /* 会话头是 sticky 的，跳转到某条消息时要把它让出来，否则目标正好被压住 */
+  function skinHeadH(){
+    var el = document.querySelector('.shead');
+    return el ? el.offsetHeight : 0;
+  }
 
   /* ==========================================================
      按天互动统计
