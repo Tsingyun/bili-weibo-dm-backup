@@ -446,6 +446,113 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   .mgr figure img{height:88px}
 }
 
+/* ================= 高清截图导出（多选 + canvas 重绘）=================
+   和「截屏」是两回事：这里不看屏幕上那张位图，而是把选中的消息
+   用代码重新排版、再以 2~3 倍比例把**字形和图片**画进 canvas，
+   所以放大看边缘是清的 —— 放大网页截图只会糊。 */
+
+/* 选择模式：勾选框插在消息行的最外侧。.msg.me 是 row-reverse，
+   所以同一个 DOM 位置在左右两侧分别落在最外端，天然对称。 */
+.shot-on .msg{padding:6px 8px;margin:5px -8px}
+.shot-on .msg.shot-picked{background:rgba(79,124,255,.08)}
+.shot-on .msg.shot-picked .bubble{box-shadow:0 0 0 1.5px var(--accent),var(--shadow)}
+.shotck{
+  flex:none;width:22px;height:22px;margin-top:5px;border-radius:7px;
+  border:1.5px solid var(--line);background:var(--panel);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:transparent;font-size:13px;line-height:1;user-select:none;
+}
+.shotck:hover{border-color:var(--accent)}
+.shotck[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+/* 日期分隔条上的「选这天」 */
+.day .daysel{
+  flex:none;border:1px solid var(--line);background:var(--panel);color:var(--muted-strong);
+  border-radius:999px;font:inherit;font-size:11.5px;padding:2px 9px;cursor:pointer;white-space:nowrap;
+}
+.day .daysel:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 底部浮动条 */
+/* 受限模式警告：必须在**选择模式一进去**就能看见，
+   否则用户勾了半天、点了导出才发现图片合不进去。 */
+#shotWarn{
+  display:none;position:fixed;left:50%;bottom:76px;z-index:95;transform:translateX(-50%);
+  max-width:min(720px,92vw);padding:9px 13px;border-radius:12px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
+  font-size:12.5px;line-height:1.65;color:var(--muted-strong);
+}
+#shotWarn.on{display:block}
+#shotWarn b{color:var(--text)}
+#shotWarn code{background:var(--chip);border-radius:5px;padding:1px 5px;font-size:12px;color:var(--text)}
+#shotBar{
+  display:none;position:fixed;left:50%;bottom:20px;z-index:95;
+  transform:translateX(-50%);align-items:center;gap:10px;
+  padding:8px 12px;border-radius:999px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
+}
+#shotBar.on{display:flex}
+#shotBar .cnt{font-size:13px;color:var(--text);white-space:nowrap}
+#shotBar .cnt b{color:var(--accent)}
+#shotBar .cnt i{font-style:normal;color:var(--muted-strong);font-size:12px}
+#shotBar button{
+  font:inherit;font-size:12.5px;padding:5px 12px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel);color:var(--text);white-space:nowrap;
+}
+#shotBar button:hover{border-color:var(--accent);color:var(--accent)}
+#shotBar button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+#shotBar button.pri:hover{filter:brightness(1.08);color:#fff}
+#shotBar button:disabled{opacity:.45;cursor:default}
+
+/* 截图面板 */
+#shot{
+  position:fixed;inset:0;z-index:210;background:rgba(10,12,16,.62);
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+#shot.on{display:flex}
+.shotbox{
+  width:100%;max-width:980px;max-height:90vh;display:flex;flex-direction:column;
+  background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;
+}
+.shot-h{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);
+}
+.shot-h h2{font-size:15px;margin:0;display:flex;align-items:center;gap:8px}
+.shot-h h2 em{font-style:normal;font-weight:400;font-size:12px;color:var(--muted-strong)}
+.shot-h .sp{flex:1}
+.shot-body{padding:14px 16px 20px;overflow:auto}
+.shot-hint{
+  display:none;margin:0 0 12px;padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.65;
+  border:1px solid var(--line);background:var(--panel);color:var(--muted-strong);
+}
+.shot-hint.on{display:block}
+.shot-hint b{color:var(--text)}
+.shot-hint code{
+  background:var(--chip);border-radius:5px;padding:1px 5px;font-size:12px;color:var(--text);
+}
+.shotgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.shotcard{
+  background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.shotcard .th{
+  height:190px;background:var(--chip);display:flex;align-items:flex-start;justify-content:center;overflow:hidden;
+}
+.shotcard .th img{width:100%;display:block}
+.shotcard .cap{padding:7px 9px;font-size:12px;color:var(--muted-strong);display:flex;align-items:center;gap:8px}
+.shotcard .cap b{color:var(--text);font-weight:600}
+.shotcard .cap a{margin-left:auto;color:var(--link);text-decoration:none;font-size:12px}
+.shotcard .cap a:hover{text-decoration:underline}
+.shotprog{font-size:12.5px;color:var(--muted-strong);margin-bottom:12px}
+.shotprog b{color:var(--text)}
+@media (max-width:640px){
+  #shot{padding:8px;align-items:flex-start}
+  .shotbox{max-height:94vh}
+  .shotgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .shotcard .th{height:140px}
+  #shotBar{left:8px;right:8px;bottom:8px;transform:none;flex-wrap:wrap;justify-content:center;border-radius:14px}
+  #shotWarn{left:8px;right:8px;bottom:108px;transform:none;max-width:none}
+}
+
 /* 灯箱 */
 #lb{
   position:fixed;inset:0;z-index:200;background:rgba(10,12,16,.9);display:none;
@@ -790,6 +897,8 @@ html[data-theme="dark"]{
               title="按每天 05:00 分界（00:00~05:00 算前一天）统计「我发出」与「对方回复」的条数，并画出每日趋势">📊 互动统计</button>
       <button class="iconbtn wide" id="mediaBtn"
               title="把这段聊天里的图片 / 动图表情 / 视频封面铺成一面墙，按类型和谁发的筛选，点开就是大图">🖼 媒体墙</button>
+      <button class="iconbtn wide" id="shotBtn"
+              title="勾选若干条消息，重新排版绘成高清长图（消息多会自动分成多张），用于分享或存档">📸 截图导出</button>
     </div>
 
     <!-- 导出：全部在浏览器里本地生成文件，不上传任何内容 -->
@@ -971,6 +1080,38 @@ html[data-theme="dark"]{
   </div>
 </div>
 
+<!-- 高清截图导出：底部选择条 + 结果面板 -->
+<div id="shotwrap">
+  <div id="shotWarn"></div>
+  <div id="shotBar">
+    <span class="cnt" id="shotCnt">已选 <b>0</b> 条</span>
+    <span class="seg" id="shotScaleSeg"
+          title="导出比例。2× = 1520px 宽（推荐，一张能装更多条）；3× 更清晰，但每张能装的条数更少">
+      <button data-sc="2" aria-pressed="true">2×</button>
+      <button data-sc="3" aria-pressed="false">3×</button>
+    </span>
+    <button id="shotAll">全选已显示</button>
+    <button id="shotClear">清空</button>
+    <button id="shotGo" class="pri">导出高清长图</button>
+    <button id="shotExit">退出</button>
+  </div>
+  <div id="shot">
+    <div class="shotbox">
+      <div class="shot-h">
+        <h2>📸 截图导出<em id="shotRange">—</em></h2>
+        <span class="sp"></span>
+        <button class="mini" id="shotZip">打包成 ZIP</button>
+        <button class="iconbtn" id="shotClose">关闭</button>
+      </div>
+      <div class="shot-body">
+        <div class="shot-hint" id="shotHint"></div>
+        <div class="shotprog" id="shotProg"></div>
+        <div class="shotgrid" id="shotGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 会话清单（由 scripts/build_sessions.mjs 从项目根的 sessions.json 生成）。
      缺这个文件时页面会用内置的「微博 / B站」两个来源兜底，不会打不开。 -->
 <script src="sessions.js" onerror="window.__sessionsMissing=1"></script>
@@ -1077,12 +1218,16 @@ function snapDom(){
     /* 媒体墙也必须在快照里：切换数据源时 DOM 是整棵重建的，
        少了这一项，第二次 boot 就会拿到上一轮渲染过的旧墙（还带着旧会话的图）。 */
     media:  document.getElementById('media').cloneNode(true),
+    /* 截图导出的浮动条与结果面板同理：切源时里面的预览图必须跟着清掉，
+       否则换到 B站 还挂着微博那批缩略图。 */
+    shotwrap: document.getElementById('shotwrap').cloneNode(true),
   };
   return SNAP;
 }
 function resetDom(){
   var S = snapDom();
-  [[ '.layout', S.layout ], [ '.fab', S.fab ], [ '#lb', S.lb ], [ '#stat', S.stat ], [ '#media', S.media ]]
+  [[ '.layout', S.layout ], [ '.fab', S.fab ], [ '#lb', S.lb ], [ '#stat', S.stat ],
+   [ '#media', S.media ], [ '#shotwrap', S.shotwrap ]]
     .forEach(function(p){
       var cur = document.querySelector(p[0]);
       if(cur && cur.parentNode) cur.parentNode.replaceChild(p[1].cloneNode(true), cur);
@@ -1946,6 +2091,10 @@ function boot(srcKey){
     fixAvatars();
     fixImgs();
     bindCtx();
+    /* 截图选择模式：重绘会把勾选框连同旧 DOM 一起丢掉，这里补回来。
+       函数声明会提升，而 SHOT 还没初始化时函数内部会直接返回，所以
+       首次 render()（在截图模块初始化之前）调用它是安全的。 */
+    shotSync();
     var mt = document.getElementById('moreTop'), mb = document.getElementById('moreBot');
     if(mt) mt.onclick = function(){ st.win = Math.max(0, st.win - CHUNK); render(true); };
     if(mb) mb.onclick = function(){ st.win = st.win + CHUNK; render(true); };
@@ -2824,6 +2973,1198 @@ function boot(srcKey){
     var img = e.target.closest && e.target.closest('img[data-ii]');
     if(img){ openLb(parseInt(img.dataset.ii,10)); }
   });
+
+  /* ==========================================================
+     高清截图导出（多选 → 重新排版 → 高清长图）
+     ----------------------------------------------------------
+     和「截屏」不是一回事：截屏是把屏幕上那张位图裁下来，放大必糊；
+     这里是先在 canvas 里**按逻辑像素重新排一遍版**——换行、气泡圆角、
+     图片缩略图、卡片、表情内联全部用代码算出来，最后整体按 2~3 倍比例
+     落成 PNG。文字是按字号真绘制的字形，所以放大看边缘仍然是清的。
+
+     一个浏览器安全边界必须先讲清楚（实测，见 _probe_canvas_file.mjs）：
+       · file:// 双击打开                      → 本地图片会「污染」canvas，
+                                                 toBlob() 抛 SecurityError，导不出图
+       · http://127.0.0.1（WebUI 的 /viewer）   → 同源，正常
+       · file:// + --allow-file-access-from-files → 正常
+     所以这里会自动探测：受限时照常导出（图片位置留占位框），
+     并在面板里给出可照做的下一步（命令/查看与导出/高清截图.cmd），
+     而不是丢一句报错让人自己猜。
+     ========================================================== */
+
+  /* ---------- A. 状态 / 取色 / 字体 ---------- */
+  var SHOT = {
+    on: false,          // 是否处于选择模式
+    pick: {},           // 已选中的消息：ai → 1（用 ALL 的下标，与筛选/搜索解耦）
+    anchor: null,       // Shift 连选的锚点
+    scale: 2,           // 导出比例
+    busy: false,
+    tainted: null,      // null 未测 / true 受污染 / false 正常
+    noImg: false,       // true = 本次导出不画任何本地图片（含头像），只画占位框
+    files: [],          // 最近一次导出产物
+    urls: [],           // 面板里预览用的 blob URL（换一批时要 revoke）
+  };
+
+  /* 逻辑画布宽度。和页面的 main{max-width:1000px} 不是一回事：
+     这里刻意窄一点（760），长截图单张能装更多条，读起来也更像聊天记录。 */
+  var SHOT_W = 760, SHOT_PAD = 26;
+  var SHOT_AV = 34, SHOT_AVGAP = 9, SHOT_MSG_MY = 11;   // 与 .msg{margin:11px 0} 同口径
+  var SHOT_BODY = Math.min(Math.round((SHOT_W - SHOT_PAD * 2) * 0.70), 492);  // 与 .body max-width 同口径
+  var SHOT_BPAD_X = 12, SHOT_BPAD_Y = 8;                                     // 与 .bubble padding 同口径
+  var SHOT_LH = 1.6;                                                         // body line-height
+  var SHOT_FS = 14, SHOT_FS_META = 11, SHOT_FS_SUB = 12.5,
+      SHOT_FS_CARDH = 12, SHOT_FS_TAG = 11;
+  var SHOT_HEAD_H = 58, SHOT_FOOT_H = 34;
+  /* 单页像素上限。Chrome 单边上限 65535、总面积约 2.6 亿像素；
+     这里取保守值，既不踩浏览器限制，又能让一张图装下足够多消息。
+     （Safari 的画布面积上限低得多 —— 本项目只承诺 Edge / Chrome。） */
+  var SHOT_PAGE_PX_H = 16000, SHOT_PAGE_PX_AREA = 40e6;
+  var SHOT_IMG_MAX = 240, SHOT_IMG_MAX_EMOJI = 130;
+  var SHOT_BOX = '📦';
+
+  var SHOT_PAL = null;
+  function shotPalette(){
+    if(SHOT_PAL) return SHOT_PAL;
+    var cs = getComputedStyle(document.documentElement);
+    var v = function(n, fb){ var s = (cs.getPropertyValue(n) || '').trim(); return s || fb; };
+    var stops = String(v('--me', '')).match(/#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)/g) || ['#4f7cff', '#7b5cff'];
+    SHOT_PAL = {
+      bg: v('--bg', '#f4f6f9'), panel: v('--panel', '#fff'),
+      text: v('--text', '#1f2329'), muted: v('--muted', '#8b939c'), muted2: v('--muted-strong', '#5f666e'),
+      line: v('--line', '#e6e9ee'),
+      peer: v('--peer', '#ffffff'), peerText: v('--peer-text', '#1f2329'),
+      meA: stops[0], meB: stops[stops.length - 1], meText: v('--me-text', '#fff'),
+      accent: v('--accent', '#4f7cff'), chip: v('--chip', '#eef1f6'),
+      link: v('--link', '#1d4ed8'), linkInk: v('--link-ink', '#1b3a9e'),
+      dark: document.documentElement.getAttribute('data-theme') === 'dark',
+    };
+    return SHOT_PAL;
+  }
+  // 字体族从 body 读，不写死 —— 用户系统里有什么就用什么，与页面所见一致
+  function shotFamily(){
+    return getComputedStyle(document.body).fontFamily ||
+      'system-ui,"Microsoft YaHei",sans-serif';
+  }
+  var SHOT_FAM = null;
+  function shotFont(size, weight){
+    if(!SHOT_FAM) SHOT_FAM = shotFamily();
+    return (weight ? weight + ' ' : '') + size + 'px ' + SHOT_FAM;
+  }
+
+  /* 度量用的离屏上下文：排版全在逻辑像素下做，绘制时才乘比例 */
+  var SHOT_MZ = document.createElement('canvas').getContext('2d');
+  function shotMeasure(s, size, weight){
+    SHOT_MZ.font = shotFont(size, weight);
+    return SHOT_MZ.measureText(s).width;
+  }
+
+  /* ---------- B. 排版工具 ---------- */
+  // 圆角矩形（四角半径可分别给，对应 .bubble 的「靠近自己那侧的角更小」）
+  function shotRR(g, x, y, w, h, r){
+    var tl, tr, br, bl;
+    if(typeof r === 'number') tl = tr = br = bl = r;
+    else { tl = r[0]; tr = r[1]; br = r[2]; bl = r[3]; }
+    tl = Math.min(tl, w / 2, h / 2); tr = Math.min(tr, w / 2, h / 2);
+    br = Math.min(br, w / 2, h / 2); bl = Math.min(bl, w / 2, h / 2);
+    g.beginPath();
+    g.moveTo(x + tl, y);
+    g.lineTo(x + w - tr, y);  g.arcTo(x + w, y, x + w, y + tr, tr);
+    g.lineTo(x + w, y + h - br); g.arcTo(x + w, y + h, x + w - br, y + h, br);
+    g.lineTo(x + bl, y + h);  g.arcTo(x, y + h, x, y + h - bl, bl);
+    g.lineTo(x, y + tl);      g.arcTo(x, y, x + tl, y, tl);
+    g.closePath();
+  }
+
+  /* 把一段文本切成「可换行的最小单元」：
+     · 拉丁/数字串整体不拆（避免把 https://… 拆成两行中间断掉）
+     · 中文与标点逐字可断（这就是浏览器的 CJK 断行行为） */
+  function shotChunks(s){
+    var out = [], i = 0, m;
+    var RE = /[A-Za-z0-9@#._\-\/:+~%$&=?]+/g;
+    while((m = RE.exec(s))){
+      for(var k = i; k < m.index; k++) out.push(s.charAt(k));
+      out.push(m[0]);
+      i = RE.lastIndex;
+    }
+    for(var k2 = i; k2 < s.length; k2++) out.push(s.charAt(k2));
+    return out;
+  }
+
+  // 文本 → 行内元素序列（把官方表情图当成一个行内「方块」参与换行）
+  function shotInline(text, size){
+    var items = [], i = 0, m;
+    var RE = /\[([^\[\]\s]{1,20})\]|\/?(ee[0-9a-f]{4,6})\.(?:png|gif)/gi;
+    var faceH = size * 1.4;
+    RE.lastIndex = 0;
+    while((m = RE.exec(text))){
+      if(m.index > i) shotPushText(items, text.slice(i, m.index), size);
+      var rel = shotFaceRel(m[2] ? m[2] : m[1]);
+      if(rel) items.push({ face: rel, w: faceH, h: faceH });
+      else shotPushText(items, m[0], size);      // 字典里没有 → 原样当文字
+      i = RE.lastIndex;
+    }
+    if(i < text.length) shotPushText(items, text.slice(i), size);
+    return items;
+  }
+  function shotPushText(items, s, size){
+    if(!s) return;
+    var parts = s.split('\n');
+    for(var p = 0; p < parts.length; p++){
+      if(p) items.push({ br: 1, w: 0 });
+      var cs = shotChunks(parts[p]);
+      for(var i = 0; i < cs.length; i++) items.push({ s: cs[i], w: shotMeasure(cs[i], size) });
+    }
+  }
+  function shotFaceRel(token){
+    if(!token) return null;
+    var m = /^\/?(ee[0-9a-f]{4,6})\.(?:png|gif)$/i.exec(token), rel = null;
+    if(m) rel = FACES.ee && FACES.ee[m[1].toLowerCase()];
+    else if(FACES.phrase) rel = FACES.phrase[token] || FACES.phrase['[' + token + ']'];
+    return rel || null;
+  }
+
+  /* 贪心换行：行内元素 → 行数组。maxW 之外没有别的约束。 */
+  function shotWrap(items, maxW){
+    var lines = [], cur = { w: 0, items: [] };
+    for(var i = 0; i < items.length; i++){
+      var it = items[i];
+      if(it.br){ lines.push(cur); cur = { w: 0, items: [] }; continue; }
+      if(cur.w + it.w > maxW && cur.items.length){
+        lines.push(cur);
+        cur = { w: 0, items: [] };
+      }
+      cur.items.push(it);
+      cur.w += it.w;
+    }
+    if(cur.items.length || !lines.length) lines.push(cur);
+    return lines;
+  }
+
+  /* ---------- C. 图片加载（带缓存与超时） ---------- */
+  var SHOT_IMGC = {};
+  function shotLoadImg(src){
+    if(!src) return Promise.resolve(null);
+    if(SHOT_IMGC[src]) return SHOT_IMGC[src];
+    SHOT_IMGC[src] = new Promise(function(res){
+      var im = new Image(), done = false;
+      var t = setTimeout(function(){ if(!done){ done = true; res(null); } }, 15000);
+      im.onload = function(){ if(done) return; done = true; clearTimeout(t); res(im); };
+      im.onerror = function(){ if(done) return; done = true; clearTimeout(t); res(null); };
+      im.src = src;
+    });
+    return SHOT_IMGC[src];
+  }
+
+  /* ---------- D. 构建块（测量） ---------- */
+  /* 每个块自带 h；分页只按块高切，所以**永远不会从一条消息中间劈开**。
+     块的内部再把要画的东西展开成一串图元（op），绘制阶段只负责照着画，
+     不再做任何度量 —— 这样分页和绘制不会因为字体/缩放差异而对不上。 */
+
+  function shotDayBlock(dk, label){
+    var pill = ' ' + label + ' ';
+    var w = shotMeasure(pill, 12) + 20;
+    return { kind: 'day', dk: dk, label: label, pillW: w, h: 22 + 25 + 14 };
+  }
+
+  function shotBubbleWidth(m, txt, hasCard){
+    // 有卡片时按整幅宽度排版（卡片内的文字自己换行，浏览器也是这个行为）
+    if(hasCard) return SHOT_BODY;
+    var maxInner = SHOT_BODY - (SHOT_BPAD_X + 1) * 2;
+    var tw = 0;
+    if(txt){
+      var lines = shotWrap(shotInline(txt, SHOT_FS), maxInner);
+      for(var i = 0; i < lines.length; i++) if(lines[i].w > tw) tw = lines[i].w;
+    }
+    var iw = shotImgRowWidth(m);
+    var mw = shotMeasure(shotName(m) + ' ' + hhmm(m.ts), SHOT_FS_META) + 14;
+    var inner = Math.max(tw, iw, Math.min(mw, maxInner), 24);
+    return Math.max(Math.min(inner + (SHOT_BPAD_X + 1) * 2, SHOT_BODY), 96);
+  }
+
+  function shotName(m){
+    return m.from === 'me' ? (META.self_name || '我') : (META.peer_name || 'TA');
+  }
+
+  // 图片区的自然宽度（受 innerW 折行），同时返回每张图的展示尺寸
+  function shotImgBox(im, hasCard){
+    var w = 0, h = 0;
+    if(im._im){
+      var nw = im._im.naturalWidth || 1, nh = im._im.naturalHeight || 1;
+      var cap = im.kind === 'emoji' ? SHOT_IMG_MAX_EMOJI : SHOT_IMG_MAX;
+      var k = Math.min(1, cap / nw, cap / nh);
+      w = Math.max(24, Math.round(nw * k)); h = Math.max(24, Math.round(nh * k));
+    }else{
+      // 图没加载出来：给一个稳定的占位尺寸，别让整页高度跟着网络抖动
+      w = im.kind === 'emoji' ? 96 : 168; h = im.kind === 'emoji' ? 96 : 120;
+    }
+    return { w: w, h: h };
+  }
+  function shotImgRowWidth(m){
+    var imgs = m.images || [];
+    if(!imgs.length) return 0;
+    var maxInner = SHOT_BODY - (SHOT_BPAD_X + 1) * 2;
+    var rows = shotImgRows(m, maxInner);
+    var w = 0;
+    for(var i = 0; i < rows.length; i++) if(rows[i].w > w) w = rows[i].w;
+    return w;
+  }
+  function shotImgRows(m, innerW){
+    var imgs = [], i, k;
+    var src = m.images || [];
+    for(i = 0; i < src.length; i++) if(src[i].local || src[i].url) imgs.push(src[i]);
+    var rows = [], cur = { w: 0, h: 0, items: [] };
+    for(i = 0; i < imgs.length; i++){
+      var b = shotImgBox(imgs[i], m.card);
+      var need = cur.items.length ? b.w + 6 : b.w;
+      if(cur.items.length && cur.w + need > innerW){
+        rows.push(cur);
+        cur = { w: 0, h: 0, items: [] };
+        need = b.w;
+      }
+      cur.items.push({ im: imgs[i], x: cur.w + (cur.items.length ? 6 : 0), w: b.w, h: b.h });
+      cur.w = cur.items.length > 1 ? cur.w + 6 + b.w : b.w;
+      if(b.h > cur.h) cur.h = b.h;
+    }
+    if(cur.items.length) rows.push(cur);
+    return rows;
+  }
+
+  function shotBuildMsg(m){
+    var me = m.from === 'me';
+    var imgs = (m.images || []).filter(function(x){ return x.local || x.url; });
+    var txt = m.text || '';
+    var tt = txt.trim();
+    var card = m.card || null;
+    var isWeiboCard = !!(card && card.kind === 'weibo');
+    var isBiliCard  = !!(card && card.kind === 'bili');
+    var isWboxCard  = !!(card && card.kind === 'wbox');
+    var hasEmoji = (m.media_type === 9 || m.media_type === 15) && imgs.length > 0;
+    var isHidMsg = isHid(m);
+    var autoMuted = (msgKind(m) === 'auto') && st.hideAuto;
+    var hideTxt = /^https?:\/\/\S+$/.test(tt) ||
+                  tt === '分享图片' || tt === '分享视频' || tt === '分享语音' ||
+                  (tt === '[动画表情]' && imgs.length) || autoMuted;
+
+    var bw = shotBubbleWidth(m, hideTxt ? '' : tt, isWeiboCard || isBiliCard);
+    var innerW = bw - (SHOT_BPAD_X + 1) * 2;
+    var ops = [], y = SHOT_BPAD_Y, P = shotPalette();
+    var tc = me ? P.meText : P.peerText;
+    var isPlain = imgs.length && !tt;
+    var isSys = (m.type === 'notice' || m.type === 'recall');
+
+    function pushLines(lines, size, color, opt){
+      opt = opt || {};
+      var lh = size * SHOT_LH;
+      for(var i = 0; i < lines.length; i++){
+        ops.push({ t: 'line', y: y, h: lh, items: lines[i].items, size: size, color: color, style: opt.style });
+        y += lh;
+      }
+    }
+    function pushGap(v){ y += v; }
+
+    if(isHidMsg){
+      // 隐藏的消息：只留一条虚线占位，正文一律不进图 —— 和页面口径一致
+      var t1 = '🙈 这条消息已隐藏';
+      ops.push({ t: 'dashed', x: 0, y: y, w: Math.min(innerW, shotMeasure(t1, SHOT_FS_SUB) + 24), h: 26 });
+      ops.push({ t: 'line', y: y + 3, h: 20, items: [{ s: t1, w: 0 }], size: SHOT_FS_SUB, color: P.muted2 });
+      y += 26;
+      return shotPack(m, me, ops, y + SHOT_BPAD_Y, bw, { plain: true, sys: false });
+    }
+
+    if(m.recalled){
+      var lr = shotWrap(shotInline('[消息已撤回]（原内容仍保留在下方）', SHOT_FS_SUB), innerW);
+      pushLines(lr, SHOT_FS_SUB, P.muted2, { style: 'italic' });
+      pushGap(6);
+    }
+
+    if(isWeiboCard || isBiliCard){
+      y = shotCard(ops, y, innerW, card, isBiliCard, me, P, tc);
+      return shotPack(m, me, ops, y + SHOT_BPAD_Y, bw, { plain: false, sys: false });
+    }
+
+    if(imgs.length){
+      var rows = shotImgRows(m, innerW);
+      for(var r = 0; r < rows.length; r++){
+        for(var k = 0; k < rows[r].items.length; k++){
+          var it = rows[r].items[k];
+          ops.push({ t: 'img', x: it.x, y: y, w: it.w, h: it.h, im: it.im, r: it.im.kind === 'emoji' ? 8 : 12 });
+        }
+        y += rows[r].h + (r < rows.length - 1 ? 6 : 0);
+      }
+      pushGap(6);
+    }else if(isWboxCard){
+      ops.push({ t: 'line', y: y, h: SHOT_FS_SUB * SHOT_LH, items: [{ s: '（动图表情，未能保存）', w: 0 }], size: SHOT_FS_SUB, color: P.muted2 });
+      y += SHOT_FS_SUB * SHOT_LH; pushGap(6);
+    }
+
+    // 正文（正文就是纯网址时，页面会把它挪到下面的链接区，这里同口径）
+    var onlyUrl = /^https?:\/\/\S+$/.test(tt);
+    var txtShown = (!hideTxt && !!tt && !onlyUrl);
+    if(txtShown){
+      pushLines(shotWrap(shotInline(tt, SHOT_FS), innerW), SHOT_FS, tc);
+      pushGap(6);
+    }
+
+    // 链接区：正文里已经原样显示过的网址不再重复列（和页面同口径）
+    if(!hasEmoji){
+      var uniq = shotLinks(m);
+      var txtUrls = tt.match(/https?:\/\/[^\s，。！？、“”‘’）)】]+/g) || [];
+      if(onlyUrl) txtUrls.forEach(function(u){ if(uniq.indexOf(u) < 0) uniq.push(u); });
+      var seenTxt = {};
+      if(txtShown) txtUrls.forEach(function(u){ seenTxt[linkKey(u)] = 1; });
+      var nPill = 0;
+      for(var li = 0; li < uniq.length; li++){
+        if(seenTxt[linkKey(uniq[li])]) continue;
+        var s = '🔗 ' + uniq[li];
+        var lw = Math.min(innerW, shotMeasure(s, SHOT_FS_SUB) + 18);
+        ops.push({ t: 'pill', x: 0, y: y, w: lw, h: 24, text: shotEllipsis(s, SHOT_FS_SUB, lw - 18),
+                   size: SHOT_FS_SUB, color: me ? P.linkInk : P.link,
+                   bg: me ? 'rgba(255,255,255,.94)' : 'rgba(127,127,127,.10)' });
+        y += 28; nPill++;
+      }
+      if(nPill) pushGap(2);
+    }
+
+    if(m.type === 'video'){
+      ops.push({ t: 'line', y: y, h: SHOT_FS_SUB * SHOT_LH, items: [{ s: '▶ 视频（备份中保存了封面图）', w: 0 }], size: SHOT_FS_SUB, color: tc });
+      y += SHOT_FS_SUB * SHOT_LH + 4;
+    }
+    if(m.type === 'voice'){
+      ops.push({ t: 'line', y: y, h: SHOT_FS_SUB * SHOT_LH, items: [{ s: '🎙 语音消息（备份中保存了封面图）', w: 0 }], size: SHOT_FS_SUB, color: tc });
+      y += SHOT_FS_SUB * SHOT_LH + 4;
+    }
+
+    if(!ops.length){
+      var ph = autoMuted ? '🙈 自动回复已隐藏'
+                         : '[' + (TYPE_LABEL[m.type] || m.type) + ']';
+      ops.push({ t: 'line', y: y, h: SHOT_FS * SHOT_LH, items: [{ s: ph, w: 0 }], size: SHOT_FS, color: P.muted2 });
+      y += SHOT_FS * SHOT_LH;
+    }
+
+    return shotPack(m, me, ops, y + SHOT_BPAD_Y, bw, { plain: isPlain, sys: isSys });
+  }
+
+  function shotLinks(m){
+    var seen = {}, out = [];
+    function add(u){
+      if(!u) return;
+      var k = linkKey(u);
+      if(!k || seen[k]) return;
+      seen[k] = 1; out.push(u);
+    }
+    // 「查看动图」这类卡片（wbox）的 url 指向 t.cn 短链，正文已另有展示，不再列（同页面口径）
+    if(m.card && m.card.url && m.card.kind !== 'wbox') add(m.card.url);
+    (m.links || []).forEach(function(l){ add(l.long || l.short); });
+    if(m.gif_video) add(m.gif_video);
+    return out;
+  }
+  function shotEllipsis(s, size, maxW){
+    if(shotMeasure(s, size) <= maxW) return s;
+    var out = s;
+    while(out.length > 4 && shotMeasure(out + '…', size) > maxW) out = out.slice(0, -2);
+    return out + '…';
+  }
+
+  /* 卡片（分享的微博 / B站 内容）：在气泡内画一个小卡片块，返回新的 y */
+  function shotCard(ops, y, innerW, card, isBili, me, P, tc){
+    var fh = SHOT_FS_CARDH, ft = SHOT_FS_SUB;
+    var lines = [];
+    var head = (isBili ? '📺 ' : '📄 ') + (isBili ? (card.sub || 'B站') : (card.author || '微博'));
+    if(isBili && card.author) head += ' · ' + card.author;
+    if(card.created) head += '  ' + fmtShort(card.created);
+    if(card.extra) head += '  · ' + card.extra;
+    lines.push({ s: head, size: fh, weight: '700', color: tc });
+    var title = card.title || '';
+    var body = card.text || '';
+    if(isBili && body.trim() === title.trim()) body = '';
+    if(title) shotWrap(shotInline(title, ft), innerW - 22).forEach(function(l){
+      l.items._card = 1; lines.push({ items: l.items, size: ft, color: tc, w: l.w });
+    });
+    if(body && body.trim() !== title.trim()) shotWrap(shotInline(body, ft), innerW - 22).forEach(function(l){
+      lines.push({ items: l.items, size: ft, color: tc, w: l.w });
+    });
+    if(card.url) lines.push({ s: '🔗 打开原链接', size: 12, color: me ? P.linkInk : P.link, pill: 1 });
+    // 量高
+    var h = 9 * 2, maxW = 0;
+    lines.forEach(function(l){
+      if(l.pill){ l.h = 22; }
+      else l.h = l.s ? l.size * 1.5 : l.size * 1.55;
+      h += l.h + 5;
+      var w = l.s ? shotMeasure(l.s, l.size, l.weight) : l.w;
+      if(w > maxW) maxW = w;
+    });
+    h -= 5;
+    var cw = Math.min(innerW, Math.max(maxW + 22, 160));
+    ops.push({ t: 'cardbox', x: 0, y: y, w: cw, h: h, me: me });
+    var cy = y + 9;
+    lines.forEach(function(l){
+      if(l.pill){
+        var pw = Math.min(cw - 22, shotMeasure(l.s, l.size) + 18);
+        ops.push({ t: 'pill', x: 11, y: cy, w: pw, h: 22, text: l.s, size: l.size,
+                   color: l.color, bg: me ? 'rgba(255,255,255,.94)' : 'rgba(127,127,127,.12)' });
+      }else if(l.s){
+        ops.push({ t: 'line', y: cy, h: l.h, items: [{ s: l.s, w: 0 }], size: l.size, color: l.color, weight: l.weight, x0: 11 });
+      }else{
+        ops.push({ t: 'line', y: cy, h: l.h, items: l.items, size: l.size, color: l.color, x0: 11 });
+      }
+      cy += l.h + 5;
+    });
+    return y + h + 6;
+  }
+
+  // 把气泡内的图元收集成一个块（顺带算头像、名字行与整块高度）
+  function shotPack(m, me, ops, bubbleH, bubbleW, opt){
+    var metaH = Math.round(SHOT_FS_META * SHOT_LH) + 1;
+    var bodyH = metaH + 4 + bubbleH;
+    var h = Math.max(SHOT_AV, bodyH) + SHOT_MSG_MY * 2;
+    return {
+      kind: 'msg', m: m, me: me, meta: { name: shotName(m), time: hhmm(m.ts) },
+      avRel: me ? (META.self_avatar_local || META.self_avatar)
+                : (META.peer_avatar_local || META.peer_avatar),
+      avTxt: shotName(m).slice(0, 1),
+      bubbleW: bubbleW, bubbleH: bubbleH, ops: ops,
+      metaH: metaH, bodyH: bodyH, h: h, plain: !!(opt && opt.plain), sys: !!(opt && opt.sys),
+      aRel: null,
+    };
+  }
+
+  /* ---------- E. 分页 ---------- */
+  function shotMaxLogicalH(){
+    var sc = SHOT.scale;
+    return Math.max(600, Math.min(
+      Math.floor(SHOT_PAGE_PX_H / sc),
+      Math.floor(SHOT_PAGE_PX_AREA / (SHOT_W * sc))
+    ));
+  }
+  function shotPaginate(blocks){
+    var budget = shotMaxLogicalH() - SHOT_HEAD_H - SHOT_FOOT_H;
+    var pages = [], cur = { blocks: [], h: SHOT_HEAD_H + SHOT_FOOT_H };
+    for(var i = 0; i < blocks.length; i++){
+      var b = blocks[i];
+      // 单块比一整页还高（超长的一条消息）→ 自己独占一页，宁可这一页超出预算也别丢内容
+      if(b.h > budget){
+        if(cur.blocks.length) { pages.push(cur); cur = { blocks: [], h: SHOT_HEAD_H + SHOT_FOOT_H }; }
+        cur.blocks.push(b); cur.h += b.h;
+        pages.push(cur); cur = { blocks: [], h: SHOT_HEAD_H + SHOT_FOOT_H };
+        continue;
+      }
+      if(cur.blocks.length && cur.h + b.h > SHOT_HEAD_H + SHOT_FOOT_H + budget){
+        pages.push(cur);
+        cur = { blocks: [], h: SHOT_HEAD_H + SHOT_FOOT_H };
+      }
+      cur.blocks.push(b); cur.h += b.h;
+    }
+    if(cur.blocks.length) pages.push(cur);
+    if(!pages.length) pages.push({ blocks: [], h: SHOT_HEAD_H + SHOT_FOOT_H + 200 });
+    return pages;
+  }
+
+  /* ---------- F. 绘制 ---------- */
+  function shotDrawHeader(g, page, idx, total, range){
+    var P = shotPalette();
+    g.fillStyle = P.panel;
+    g.fillRect(0, 0, SHOT_W, SHOT_HEAD_H);
+    g.strokeStyle = P.line; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, SHOT_HEAD_H + .5); g.lineTo(SHOT_W, SHOT_HEAD_H + .5); g.stroke();
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    g.fillStyle = P.text;
+    g.font = shotFont(15, '700');
+    g.fillText(shotEllipsis('📸 ' + (META.peer_name || '私信备份') + ' 的私信', 15, SHOT_W - 260), SHOT_PAD, SHOT_HEAD_H / 2 - 7);
+    g.font = shotFont(11.5);
+    g.fillStyle = P.muted2;
+    g.fillText(shotEllipsis((SRC.label || CUR_SRC) + ' · ' + range, 11.5, SHOT_W - 260), SHOT_PAD, SHOT_HEAD_H / 2 + 11);
+    g.textAlign = 'right';
+    g.font = shotFont(11.5);
+    g.fillStyle = P.muted2;
+    g.fillText('第 ' + (idx + 1) + ' / ' + total + ' 张' + (idx ? '（承接上张）' : ''), SHOT_W - SHOT_PAD, SHOT_HEAD_H / 2 + 11);
+    g.font = shotFont(12, '700');
+    g.fillStyle = P.accent;
+    g.fillText('高清重排 · ' + SHOT.scale + '×', SHOT_W - SHOT_PAD, SHOT_HEAD_H / 2 - 7);
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+  }
+
+  function shotDrawFooter(g, page, idx, total, pageH){
+    var P = shotPalette();
+    var y = pageH - SHOT_FOOT_H;
+    g.fillStyle = P.panel;
+    g.fillRect(0, y, SHOT_W, SHOT_FOOT_H);
+    g.strokeStyle = P.line; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, y + .5); g.lineTo(SHOT_W, y + .5); g.stroke();
+    g.textBaseline = 'middle';
+    g.font = shotFont(11);
+    g.fillStyle = P.muted2;
+    g.textAlign = 'left';
+    g.fillText('由「私信备份」在本机重排生成 · 未上传任何数据', SHOT_PAD, y + SHOT_FOOT_H / 2);
+    g.textAlign = 'right';
+    g.fillText(new Date().toLocaleString('zh-CN') + ' · 第 ' + (idx + 1) + '/' + total + ' 张', SHOT_W - SHOT_PAD, y + SHOT_FOOT_H / 2);
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+  }
+
+  function shotDrawDay(g, b, y){
+    var P = shotPalette();
+    var cy = y + 22 + 12;
+    g.strokeStyle = P.line; g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(SHOT_PAD, cy + .5); g.lineTo(SHOT_W - SHOT_PAD, cy + .5); g.stroke();
+    var pw = b.pillW, px = (SHOT_W - pw) / 2, ph = 25;
+    g.fillStyle = P.panel;
+    shotRR(g, px, cy - ph / 2, pw, ph, 999);
+    g.fill();
+    g.strokeStyle = P.line; g.stroke();
+    g.fillStyle = P.muted2;
+    g.font = shotFont(12);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(b.label, SHOT_W / 2, cy + 1);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    /* ⚠ 这个 return 不能少：shotDrawBlock 是「画完返回下一个 y」的约定，
+       漏掉它就变成 undefined，后面所有块都画在 NaN 上 ——
+       而 canvas 对 NaN 大多是静默忽略（只有 createLinearGradient 会抛），
+       于是页面看起来「导出成功」，其实从第一个分隔条往后全是空白。
+       （2026-09-23 被 verify_screenshot 的横向墨迹分布断言抓到过。） */
+    return y + b.h;
+  }
+
+  function shotDrawBlock(g, b, y){
+    if(b.kind === 'day') return shotDrawDay(g, b, y);
+    var P = shotPalette();
+    var x0 = SHOT_PAD, right = SHOT_W - SHOT_PAD;
+    // 和页面同一套规则：头像贴各自那一侧，气泡紧贴头像（.msg.me 靠右）。
+    var avX = b.me ? right - SHOT_AV : x0;
+    var peerX = x0 + SHOT_AV + SHOT_AVGAP;          // 对方气泡左边缘
+    var meRight = right - SHOT_AV - SHOT_AVGAP;     // 我方气泡右边缘
+    var bx = b.me ? meRight - b.bubbleW : peerX;
+    var byTop = y + SHOT_MSG_MY;
+
+    // 头像（受限模式下连头像也不能画 —— 它同样是本地图片）
+    var avY = byTop;
+    if(b.avRel && !SHOT.noImg){
+      var im = SHOT_IMGC[b.avRel] && SHOT_IMGC[b.avRel].__v;
+      if(im){
+        g.save();
+        g.beginPath(); g.arc(avX + SHOT_AV / 2, avY + SHOT_AV / 2, SHOT_AV / 2, 0, Math.PI * 2); g.closePath();
+        g.clip();
+        g.drawImage(im, avX, avY, SHOT_AV, SHOT_AV);
+        g.restore();
+      }else{
+        shotAvatarFallback(g, b, avX, avY, P);
+      }
+    }else{
+      shotAvatarFallback(g, b, avX, avY, P);
+    }
+
+    // 名字 + 时间
+    g.font = shotFont(SHOT_FS_META);
+    g.fillStyle = P.muted;
+    g.textBaseline = 'middle';
+    if(b.me){
+      var t = b.meta.time, n = b.meta.name;
+      g.textAlign = 'right';
+      g.fillText(t, bx + b.bubbleW - 4, byTop + b.metaH / 2);
+      g.fillText(n, bx + b.bubbleW - 4 - shotMeasure(t, SHOT_FS_META) - 7, byTop + b.metaH / 2);
+    }else{
+      g.textAlign = 'left';
+      g.fillText(b.meta.name, bx + 4, byTop + b.metaH / 2);
+      g.fillText(b.meta.time, bx + 4 + shotMeasure(b.meta.name, SHOT_FS_META) + 7, byTop + b.metaH / 2);
+    }
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+
+    // 气泡
+    var bubTop = byTop + b.metaH + 4;
+    var radius = b.me ? [14, 5, 14, 14] : [5, 14, 14, 14];
+    if(b.sys){
+      g.save();
+      g.setLineDash([4, 4]);
+      g.strokeStyle = P.line;
+      shotRR(g, bx, bubTop, b.bubbleW, b.bubbleH, 14); g.stroke();
+      g.restore();
+    }else if(!b.plain){
+      if(b.me){
+        var gr = g.createLinearGradient(bx, bubTop, bx + b.bubbleW, bubTop + b.bubbleH);
+        gr.addColorStop(0, P.meA); gr.addColorStop(1, P.meB);
+        g.fillStyle = gr;
+      }else{
+        g.fillStyle = P.peer;
+      }
+      shotRR(g, bx + .5, bubTop + .5, b.bubbleW - 1, b.bubbleH - 1, radius);
+      g.fill();
+      g.strokeStyle = b.me ? 'rgba(255,255,255,.001)' : P.line;
+      g.lineWidth = 1;
+      if(!b.me) g.stroke();
+    }
+
+    // 气泡内图元
+    var ox = bx + SHOT_BPAD_X + 1, oy = bubTop + SHOT_BPAD_Y;
+    for(var i = 0; i < b.ops.length; i++) shotOp(g, b.ops[i], ox, oy, b, P);
+
+    return y + b.h;
+  }
+
+  function shotAvatarFallback(g, b, x, y, P){
+    var g2 = g.createLinearGradient(x, y, x + SHOT_AV, y + SHOT_AV);
+    g2.addColorStop(0, b.me ? P.meA : P.chip);
+    g2.addColorStop(1, b.me ? P.meB : P.chip);
+    g.fillStyle = g2;
+    g.beginPath(); g.arc(x + SHOT_AV / 2, y + SHOT_AV / 2, SHOT_AV / 2 - .5, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = P.line; g.stroke();
+    g.fillStyle = b.me ? P.meText : P.muted2;
+    g.font = shotFont(13, '700');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(b.avTxt, x + SHOT_AV / 2, y + SHOT_AV / 2 + 1);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+
+  function shotOp(g, op, ox, oy, b, P){
+    if(op.t === 'line'){
+      g.font = (op.style === 'italic' ? 'italic ' : '') + shotFont(op.size, op.weight);
+      g.fillStyle = op.color;
+      g.textBaseline = 'middle';
+      var x = ox + (op.x0 || 0);
+      var y = oy + op.y + op.h / 2;
+      for(var i = 0; i < op.items.length; i++){
+        var it = op.items[i];
+        if(it.face){
+          var im = SHOT.noImg ? null : (SHOT_IMGC[it.face] && SHOT_IMGC[it.face].__v);
+          if(im) g.drawImage(im, x, y - it.h / 2 + op.size * .06, it.w, it.h);
+          else { g.fillStyle = op.color; g.fillText('▢', x, y); }
+          x += it.w;
+        }else{
+          g.fillStyle = op.color;
+          g.fillText(it.s, x, y);
+          x += (it.w || shotMeasure(it.s, op.size, op.weight));
+        }
+      }
+      g.textBaseline = 'alphabetic';
+      return;
+    }
+    if(op.t === 'img'){
+      var im2 = SHOT.noImg ? null : (SHOT_IMGC[op.im.local || op.im.url] && SHOT_IMGC[op.im.local || op.im.url].__v);
+      var X = ox + op.x, Y = oy + op.y;
+      if(im2){
+        g.save();
+        shotRR(g, X, Y, op.w, op.h, op.r); g.clip();
+        g.drawImage(im2, X, Y, op.w, op.h);
+        g.restore();
+        g.strokeStyle = P.line; g.lineWidth = 1;
+        shotRR(g, X + .5, Y + .5, op.w - 1, op.h - 1, op.r); g.stroke();
+      }else{
+        g.save();
+        g.setLineDash([4, 4]);
+        g.strokeStyle = P.line; g.fillStyle = P.chip;
+        shotRR(g, X, Y, op.w, op.h, op.r); g.fill(); g.stroke();
+        g.restore();
+        g.fillStyle = P.muted2;
+        g.font = shotFont(11.5);
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(SHOT.noImg ? '图片未包含（见下方说明）' : '图片未落盘', X + op.w / 2, Y + op.h / 2);
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      }
+      return;
+    }
+    if(op.t === 'pill'){
+      var px = ox + op.x, py = oy + op.y;
+      g.fillStyle = op.bg;
+      shotRR(g, px, py, op.w, op.h, 8); g.fill();
+      g.fillStyle = op.color;
+      g.font = shotFont(op.size);
+      g.textBaseline = 'middle';
+      g.fillText(op.text, px + 9, py + op.h / 2 + .5);
+      g.textBaseline = 'alphabetic';
+      return;
+    }
+    if(op.t === 'cardbox'){
+      var cx = ox + op.x, cy2 = oy + op.y;
+      g.fillStyle = b.me ? 'rgba(255,255,255,.15)' : (P.dark ? 'rgba(255,255,255,.05)' : 'rgba(127,127,127,.06)');
+      shotRR(g, cx, cy2, op.w, op.h, 11); g.fill();
+      g.strokeStyle = b.me ? 'rgba(255,255,255,.25)' : P.line; g.lineWidth = 1;
+      shotRR(g, cx + .5, cy2 + .5, op.w - 1, op.h - 1, 11); g.stroke();
+      return;
+    }
+    if(op.t === 'dashed'){
+      g.save();
+      g.setLineDash([4, 4]);
+      g.strokeStyle = P.line;
+      shotRR(g, ox + op.x, oy + op.y, op.w, op.h, 10); g.stroke();
+      g.restore();
+      return;
+    }
+  }
+
+  async function shotRenderPage(page, idx, total, range){
+    var sc = SHOT.scale;
+    /* 兜底：某一条消息特别长时，它独占一页也可能超出单页像素上限。
+       这时**只对这一页**降一点比例，而不是把内容丢掉或让浏览器报错。 */
+    if(page.h * sc > SHOT_PAGE_PX_H) sc = SHOT_PAGE_PX_H / page.h;
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(SHOT_W * sc);
+    cv.height = Math.max(1, Math.round(page.h * sc));
+    var g = cv.getContext('2d');
+    g.setTransform(sc, 0, 0, sc, 0, 0);
+    var P = shotPalette();
+    g.fillStyle = P.bg;
+    g.fillRect(0, 0, SHOT_W, page.h);
+    shotDrawHeader(g, page, idx, total, range);
+    var y = SHOT_HEAD_H;
+    for(var i = 0; i < page.blocks.length; i++) y = shotDrawBlock(g, page.blocks[i], y);
+    shotDrawFooter(g, page, idx, total, page.h);
+    var blob = await new Promise(function(res, rej){
+      try{
+        cv.toBlob(function(bl){ bl ? res(bl) : rej(new Error('canvas 导出返回空')); }, 'image/png');
+      }catch(e){ rej(e); }
+    });
+    cv.width = cv.height = 0;      // 及时释放大画布
+    return blob;
+  }
+
+  /* ---------- G. ZIP（只用 store，不压缩）----------
+     PNG 本身已经压过了，再套一层 deflate 收益极小；
+     自己写 store 版能保证零依赖，而且多张图打成一个文件下载
+     不会被浏览器的「多文件下载」拦截。 */
+  var SHOT_CRC = null;
+  function shotCrc32(buf){
+    if(!SHOT_CRC){
+      SHOT_CRC = new Int32Array(256);
+      for(var n = 0; n < 256; n++){
+        var c = n;
+        for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        SHOT_CRC[n] = c;
+      }
+    }
+    var cr = -1;
+    for(var i = 0; i < buf.length; i++) cr = SHOT_CRC[(cr ^ buf[i]) & 0xFF] ^ (cr >>> 8);
+    return (cr ^ -1) >>> 0;
+  }
+  function shotZip(files){
+    var enc = new TextEncoder();
+    var parts = [], central = [], offset = 0;
+    var d = new Date();
+    var dosTime = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+    var dosDate = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+    function u16(v){ return [v & 0xFF, (v >> 8) & 0xFF]; }
+    function u32(v){ return [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]; }
+    files.forEach(function(f){
+      var name = enc.encode(f.name), crc = shotCrc32(f.data), len = f.data.length;
+      var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+                                u32(crc), u32(len), u32(len), u16(name.length), u16(0));
+      var hb = new Uint8Array(head);
+      parts.push(hb, name, f.data);
+      // 中央目录记录：固定 46 字节，文件名紧跟其后
+      central.push(new Uint8Array([].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+        u32(crc), u32(len), u32(len), u16(name.length), u16(0), u16(0), u16(0), u16(0),
+        u32(0), u32(offset))));
+      central.push(name);
+      offset += hb.length + name.length + len;
+    });
+    var cdSize = central.reduce(function(a, x){ return a + x.length; }, 0);
+    var end = new Uint8Array([].concat(
+      u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(cdSize), u32(offset), u16(0)));
+    return new Blob(parts.concat(central, [end]), { type: 'application/zip' });
+  }
+
+  /* ---------- H. 选择模式 UI ---------- */
+  function shotOrder(){
+    // 当前 DOM 里消息的先后顺序（含搜索/筛选后的结果），Shift 连选按它来
+    var out = [];
+    Array.prototype.forEach.call(chat.querySelectorAll('.msg[data-ai]'), function(el){
+      var ai = Number(el.dataset.ai);
+      if(Number.isFinite(ai)) out.push(ai);
+    });
+    return out;
+  }
+  function shotPicked(){
+    var arr = [];
+    for(var k in SHOT.pick) if(SHOT.pick[k]) arr.push(Number(k));
+    arr = arr.filter(function(ai){ return ai >= 0 && ai < ALL.length; });
+    arr.sort(function(a, b){ return a - b; });   // 按会话顺序，不按点击顺序
+    return arr;
+  }
+  function shotEstimate(){
+    var picked = shotPicked();
+    if(!picked.length) return 1;
+    var sel = {};
+    picked.forEach(function(ai){ sel[ai] = 1; });
+    var sum = 0, n = 0;
+    shotOrder().forEach(function(ai){
+      if(!sel[ai]) return;
+      var el = chat.querySelector('.msg[data-ai="' + ai + '"]');
+      if(el && el.offsetHeight){ sum += el.offsetHeight + 12; n++; }
+    });
+    var avg = n ? sum / n : 120;
+    var per = shotMaxLogicalH() - SHOT_HEAD_H - SHOT_FOOT_H;
+    // 分隔条按「每 12 条一个」粗估，只用于显示，真实张数以导出时排完版为准
+    return Math.max(1, Math.ceil((picked.length * avg + picked.length / 12 * 61 + SHOT_HEAD_H + SHOT_FOOT_H) / per));
+  }
+  function shotBarUpdate(){
+    var n = shotPicked().length;
+    document.getElementById('shotCnt').innerHTML =
+      '已选 <b>' + n + '</b> 条' + (n ? ' <i>· 预计 ' + shotEstimate() + ' 张</i>' : '');
+    document.getElementById('shotGo').disabled = !n || SHOT.busy;
+    document.getElementById('shotAll').disabled = !shotOrder().length;
+  }
+  function shotSync(){
+    if(!SHOT || !SHOT.on) return;
+    // 勾选框：插在消息行最外侧（.msg.me 是 row-reverse，同一个 DOM 位置天然落在另一侧）
+    Array.prototype.forEach.call(chat.querySelectorAll('.msg[data-ai]'), function(el){
+      var ai = Number(el.dataset.ai);
+      var ck = el.querySelector(':scope > .shotck');
+      if(!ck){
+        ck = document.createElement('span');
+        ck.className = 'shotck';
+        ck.textContent = '✓';
+        ck.dataset.ai = String(ai);
+        el.insertBefore(ck, el.firstChild);
+      }
+      ck.setAttribute('aria-checked', SHOT.pick[ai] ? 'true' : 'false');
+      el.classList.toggle('shot-picked', !!SHOT.pick[ai]);
+    });
+    // 日期分隔条上挂「选这天」：取它到下一个分隔条之间的消息
+    Array.prototype.forEach.call(chat.querySelectorAll('.day'), function(day){
+      if(day.querySelector('.daysel')) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'daysel';
+      btn.textContent = '选这天';
+      day.appendChild(btn);
+    });
+    shotBarUpdate();
+  }
+  function shotToggle(ai, on){
+    if(on) SHOT.pick[ai] = 1; else delete SHOT.pick[ai];
+  }
+  function shotEnter(on){
+    SHOT.on = !!on;
+    SHOT_PAL = null;      // 深色/浅色主题可能刚被切过，取色要重新读
+    document.body.classList.toggle('shot-on', SHOT.on);
+    document.getElementById('shotBar').classList.toggle('on', SHOT.on);
+    if(SHOT.on){
+      shotProbeTaint();
+      shotSync();
+      shotShowWarn();
+      /* 刚进选择模式时图片可能还没解码完，探测拿不到结论；
+         过一会儿再探一次，免得「图片合不进去」这件事拖到导出时才暴露。 */
+      setTimeout(function(){
+        if(!SHOT.on) return;
+        if(SHOT.tainted === null) shotProbeTaint();
+        shotShowWarn();
+      }, 700);
+    }else{
+      document.getElementById('shotWarn').classList.remove('on');
+      Array.prototype.forEach.call(chat.querySelectorAll('.shotck'), function(el){ el.remove(); });
+      Array.prototype.forEach.call(chat.querySelectorAll('.daysel'), function(el){ el.remove(); });
+      Array.prototype.forEach.call(chat.querySelectorAll('.shot-picked'), function(el){ el.classList.remove('shot-picked'); });
+      document.getElementById('shot').classList.remove('on');
+    }
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('#shotScaleSeg button'), function(b){
+    b.onclick = function(){
+      Array.prototype.forEach.call(document.querySelectorAll('#shotScaleSeg button'), function(x){
+        x.setAttribute('aria-pressed', 'false');
+      });
+      b.setAttribute('aria-pressed', 'true');
+      SHOT.scale = Number(b.dataset.sc) || 2;
+      shotBarUpdate();
+    };
+  });
+
+  document.getElementById('shotBtn').onclick = function(){ shotEnter(!SHOT.on); };
+  document.getElementById('shotExit').onclick = function(){ shotEnter(false); };
+  document.getElementById('shotClear').onclick = function(){
+    SHOT.pick = {}; SHOT.anchor = null; shotSync();
+  };
+  document.getElementById('shotAll').onclick = function(){
+    shotOrder().forEach(function(ai){ SHOT.pick[ai] = 1; });
+    shotSync();
+  };
+  document.getElementById('shotClose').onclick = function(){
+    document.getElementById('shot').classList.remove('on');
+  };
+  document.getElementById('shot').addEventListener('click', function(e){
+    if(e.target.id === 'shot') document.getElementById('shot').classList.remove('on');
+  });
+  onDoc('keydown', function(e){
+    if(e.key === 'Escape' && document.getElementById('shot').classList.contains('on')){
+      document.getElementById('shot').classList.remove('on');
+    }
+  });
+
+  // 勾选（含 Shift 连选）与「选这天」：都靠事件委托，重绘后不用重新绑定
+  chat.addEventListener('click', function(e){
+    if(!SHOT.on) return;
+    var t = e.target;
+    var ck = t.closest && t.closest('.shotck');
+    if(ck){
+      var ai = Number(ck.dataset.ai);
+      if(e.shiftKey && SHOT.anchor != null && SHOT.anchor !== ai){
+        var ord = shotOrder();
+        var a = ord.indexOf(SHOT.anchor), b2 = ord.indexOf(ai);
+        if(a >= 0 && b2 >= 0){
+          var lo = Math.min(a, b2), hi = Math.max(a, b2);
+          var on = !SHOT.pick[ai];
+          for(var i = lo; i <= hi; i++) shotToggle(ord[i], on);
+        }
+      }else{
+        shotToggle(ai, !SHOT.pick[ai]);
+      }
+      SHOT.anchor = ai;
+      shotSync();
+      e.preventDefault();
+      return;
+    }
+    var ds = t.closest && t.closest('.daysel');
+    if(ds){
+      var day = ds.closest('.day');
+      var picked = [];
+      var n = day && day.nextElementSibling;
+      while(n && !n.classList.contains('day')){
+        if(n.classList.contains('msg') && n.dataset.ai != null) picked.push(Number(n.dataset.ai));
+        n = n.nextElementSibling;
+      }
+      // 已经在里面且全选 → 反选成清空；否则全选
+      var allOn = picked.length && picked.every(function(x){ return SHOT.pick[x]; });
+      picked.forEach(function(x){ shotToggle(x, !allOn); });
+      shotSync();
+      e.preventDefault();
+    }
+  });
+
+  /* ---------- I. 画布污染探测与提示 ---------- */
+  function shotProbeTaint(){
+    if(SHOT.tainted !== null) return SHOT.tainted;
+    /* 取样图要挑「已经解码好」的那张：
+       消息里的图带 loading="lazy"，没滚到就根本没开始加载（complete === false），
+       只认第一张会一直探不出结论 —— 头像是本地小图、一定加载过，兜底用它。
+       两者都只在同一个判据上起作用：都是本地文件，污染与否是一样的。 */
+    var im = null, cands = chat.querySelectorAll('.msg .bubble img[data-ii], img.av');
+    for(var ci = 0; ci < cands.length; ci++){
+      if(cands[ci].complete && cands[ci].naturalWidth){ im = cands[ci]; break; }
+    }
+    /* 图还没加载完时**不能**下结论、更不能缓存：
+       一次「未加载」被当成「没污染」之后，导出时才在 toBlob 抛错，
+       用户就先看到一堆勾选框、最后才被拦下来。这里返回 false 但保留 null，
+       下一次（进选择模式、再点导出）都会重新探。 */
+    if(!im || !im.complete || !im.naturalWidth) return false;
+    try{
+      var c = document.createElement('canvas'); c.width = 1; c.height = 1;
+      var g = c.getContext('2d');
+      g.drawImage(im, 0, 0, 1, 1);
+      g.getImageData(0, 0, 1, 1);
+      SHOT.tainted = false;
+    }catch(e){
+      SHOT.tainted = true;
+    }
+    return SHOT.tainted;
+  }
+  // 选择模式里那条常驻短警告（面板还没打开时唯一能看到提示的地方）
+  function shotShowWarn(){
+    var el = document.getElementById('shotWarn');
+    if(!SHOT.tainted){ el.className = ''; el.innerHTML = ''; return; }
+    el.className = 'on';
+    el.innerHTML = '<b>⚠ 双击打开（file://）时浏览器不允许把本地图片合进导出图。</b>' +
+      '现在导出可以，但图片位置会是占位框。想带上图片：' +
+      '双击 <code>命令/查看与导出/高清截图.cmd</code>，用它打开的窗口再来一次。';
+  }
+  function shotHintHtml(tainted){
+    if(!tainted){
+      return '当前是<b>本地服务</b>打开，图片可以直接合成进导出图（最清）。' +
+             '点击任意消息左侧的勾选框选择，<b>Shift + 点击</b>可连选一段；' +
+             '再点「导出高清长图」——消息多会自动分成多张，并打包成一个 ZIP。';
+    }
+    return '<b>⚠ 现在是双击打开的（file://），浏览器不允许把本地图片画进导出图</b>' +
+      '（这是浏览器的安全边界：本地图片会把画布「污染」，导出时直接报 SecurityError，实测确认）。<br>' +
+      '想连图片一起导出：双击 <code>命令/查看与导出/高清截图.cmd</code>，' +
+      '它会用一个专用浏览器窗口打开本页，图片就能正常合成。' +
+      '<br>现在直接导出也可以，只是图片位置会是空的占位框。';
+  }
+
+  /* ---------- J. 导出 ---------- */
+  function shotSaveBlob(name, blob){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){
+      URL.revokeObjectURL(url);
+      if(a.parentNode) a.parentNode.removeChild(a);
+    }, 10000);
+  }
+  function shotProg(html){
+    var el = document.getElementById('shotProg');
+    if(el) el.innerHTML = html || '';
+  }
+  function shotClearPreviews(){
+    SHOT.urls.forEach(function(u){ try{ URL.revokeObjectURL(u); }catch(e){} });
+    SHOT.urls = [];
+    document.getElementById('shotGrid').innerHTML = '';
+  }
+
+  async function shotBuild(messages){
+    /* 受限模式（file:// 双击打开）下**一个本地图片都不画**，包括头像与行内表情：
+       只要画进去一张，整块画布就被污染，toBlob() 当场抛 SecurityError，什么都导不出来。
+       与其让用户点了导出只看到一句报错，不如照常出图、图片位置留占位框，
+       再把「怎么才能带上图片」写在面板上。 */
+    SHOT.noImg = shotProbeTaint();
+    if(SHOT.noImg) return shotBuildBlocks(messages);
+
+    // 先把要用到的图和头像全部加载好，再排版 —— 否则图片尺寸未知，
+    // 量出来的高度会和画出来对不上，分页就会切歪。
+    var srcs = [];
+    messages.forEach(function(m){
+      (m.images || []).forEach(function(im){ var s = im.local || im.url; if(s) srcs.push(s); });
+    });
+    var avs = [META.self_avatar_local || META.self_avatar, META.peer_avatar_local || META.peer_avatar];
+    var all = srcs.concat(avs.filter(Boolean));
+    var uniq = [];
+    var seen = {};
+    all.forEach(function(s){ if(!seen[s]){ seen[s] = 1; uniq.push(s); } });
+    var loaded = 0;
+    var CONC = 8;
+    await new Promise(function(done){
+      var i = 0, running = 0, left = uniq.length;
+      if(!left) return done();
+      function step(){
+        while(running < CONC && i < uniq.length){
+          var s = uniq[i++];
+          running++;
+          shotLoadImg(s).then(function(im){
+            if(im) SHOT_IMGC[s].__v = im;
+            running--; loaded++;
+            shotProg('正在准备图片 <b>' + loaded + '/' + uniq.length + '</b> …');
+            if(--left === 0) done(); else step();
+          });
+        }
+      }
+      step();
+    });
+
+    return shotBuildBlocks(messages);
+  }
+
+  // 顺序地把选中消息变成「日期分隔条 + 消息块」的清单
+  function shotBuildBlocks(messages){
+    var blocks = [], last = null;
+    messages.forEach(function(m){
+      var dk = m.ts ? dayKey(m.ts) : 'x';
+      if(dk !== last && m.ts){ blocks.push(shotDayBlock(dk, dayLabel(m.ts))); last = dk; }
+      blocks.push(shotBuildMsg(m));
+    });
+    return blocks;
+  }
+
+  async function shotExport(){
+    if(SHOT.busy) return;
+    var picked = shotPicked();
+    if(!picked.length){ alert('还没有勾选任何消息。\n\n点每条消息左侧的方框即可勾选，Shift + 点击可以连选一段。'); return; }
+    var messages = picked.map(function(ai){ return ALL[ai]; }).filter(Boolean);
+    SHOT.busy = true;
+    shotBarUpdate();
+    document.getElementById('shot').classList.add('on');
+    document.getElementById('shotHint').className = 'shot-hint on';
+    document.getElementById('shotHint').innerHTML = shotHintHtml(shotProbeTaint());
+    document.getElementById('shotRange').textContent = '—';
+    shotClearPreviews();
+    shotProg('正在排版 <b>' + messages.length + '</b> 条消息…');
+    try{
+      var blocks = await shotBuild(messages);
+      var pages = shotPaginate(blocks);
+      var dateFrom = '', dateTo = '';
+      for(var i = 0; i < messages.length; i++){
+        if(!messages[i].ts) continue;
+        var k = dayKey(messages[i].ts);
+        if(!dateFrom) dateFrom = k;
+        dateTo = k;
+      }
+      var range = (dateFrom || '?') + (dateTo && dateTo !== dateFrom ? ' ~ ' + dateTo : '');
+      document.getElementById('shotRange').textContent =
+        messages.length + ' 条 · ' + range + ' · ' + pages.length + ' 张 · ' + SHOT.scale + '×';
+
+      /* 只读快照：给回归测试断言「分了几页、每页几条」用，也方便排查问题。
+         不参与任何渲染分支 —— 拿掉它页面行为完全一样。 */
+      window.__shotStats = {
+        msgs: messages.length, pages: pages.length, scale: SHOT.scale, noImg: SHOT.noImg,
+        perPage: pages.map(function(pg){
+          var n = 0;
+          pg.blocks.forEach(function(b){ if(b.kind === 'msg') n++; });
+          return n;
+        }),
+        perPageH: pages.map(function(pg){ return Math.round(pg.h); }),
+      };
+
+      var stamp = ymd(new Date());
+      var files = [];
+      for(var p = 0; p < pages.length; p++){
+        shotProg('正在绘制第 <b>' + (p + 1) + '/' + pages.length + '</b> 张（' +
+                 SHOT_W * SHOT.scale + ' × ' + Math.round(pages[p].h * SHOT.scale) + ' 像素）…');
+        await new Promise(function(r){ setTimeout(r, 0); });     // 让进度真的画出来
+        var blob = await shotRenderPage(pages[p], p, pages.length, range);
+        var name = pages.length === 1
+          ? '截图_' + CUR_SRC + '_' + stamp + '.png'
+          : '截图_' + CUR_SRC + '_' + stamp + '_第' + (p + 1) + '-' + pages.length + '张.png';
+        files.push({ name: name, blob: blob, w: Math.round(SHOT_W * SHOT.scale), h: Math.round(pages[p].h * SHOT.scale) });
+      }
+      SHOT.files = files;
+
+      // 预览（每张一个小卡，可单独再下载）
+      var grid = document.getElementById('shotGrid');
+      grid.innerHTML = '';
+      files.forEach(function(f, i){
+        var u = URL.createObjectURL(f.blob);
+        SHOT.urls.push(u);
+        var d = document.createElement('div');
+        d.className = 'shotcard';
+        d.innerHTML = '<div class="th"><img src="' + u + '" alt=""></div>' +
+          '<div class="cap"><b>第 ' + (i + 1) + '/' + files.length + ' 张</b>' +
+          (f.w + '×' + f.h) + '<a href="' + u + '" download="' + f.name + '">下载</a></div>';
+        grid.appendChild(d);
+      });
+
+      // 自动落盘：单张直接给 PNG；多张打包成 zip —— 逐个下载会被浏览器拦「多文件下载」
+      var note = SHOT.noImg ? '　<b>⚠ 本次未包含图片</b>（原因见上方说明）' : '';
+      if(files.length === 1){
+        shotSaveBlob(files[0].name, files[0].blob);
+        shotProg('已生成 <b>1</b> 张：' + files[0].name + '（已开始下载，也在下面可直接下载）' + note);
+      }else{
+        var zipName = '截图_' + CUR_SRC + '_' + stamp + '_' + files.length + '张.zip';
+        var zip = shotZip(await Promise.all(files.map(async function(f){
+          return { name: f.name, data: new Uint8Array(await f.blob.arrayBuffer()) };
+        })));
+        shotSaveBlob(zipName, zip);
+        shotProg('已生成 <b>' + files.length + '</b> 张，自动从第 1 张切到第 ' + files.length +
+                 ' 张 · 打包为 ' + zipName + '（已开始下载）' + note);
+      }
+      var hint = document.getElementById('shotHint');
+      hint.className = 'shot-hint on';
+      hint.innerHTML = shotHintHtml(shotProbeTaint());
+    }catch(err){
+      var msg = String(err && err.message || err);
+      if(/taint|SecurityError|cross-origin/i.test(msg)){
+        SHOT.tainted = true;
+        var h = document.getElementById('shotHint');
+        h.className = 'shot-hint on';
+        h.innerHTML = shotHintHtml(true);
+        shotProg('<b>没能导出</b>：浏览器拒绝了画布导出（本地图片污染）。按上面的办法换一个打开方式即可。');
+      }else{
+        shotProg('<b>导出失败</b>：' + esc(msg));
+      }
+    }finally{
+      SHOT.busy = false;
+      shotBarUpdate();
+    }
+  }
+  document.getElementById('shotGo').onclick = shotExport;
+  // 面板里的「打包成 ZIP」：把最近一次的结果再打一次（不用重新排版）
+  document.getElementById('shotZip').onclick = async function(){
+    if(!SHOT.files.length){ alert('还没有导出结果。\n\n先勾选若干条消息，再点「导出高清长图」。'); return; }
+    if(SHOT.files.length === 1){ shotSaveBlob(SHOT.files[0].name, SHOT.files[0].blob); return; }
+    var data = await Promise.all(SHOT.files.map(async function(f){
+      return { name: f.name, data: new Uint8Array(await f.blob.arrayBuffer()) };
+    }));
+    shotSaveBlob('截图_' + CUR_SRC + '_' + ymd(new Date()) + '_' + SHOT.files.length + '张.zip', shotZip(data));
+  };
 
   /* ==========================================================
      媒体墙（P1-4）

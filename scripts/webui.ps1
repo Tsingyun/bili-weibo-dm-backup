@@ -1,9 +1,12 @@
 ﻿# 私信备份 · 本地 WebUI 启动器
-# 用法：powershell -ExecutionPolicy Bypass -File scripts\webui.ps1 [-Port 8787] [-NoOpen]
+# 用法：powershell -ExecutionPolicy Bypass -File scripts\webui.ps1 [-Port 8787] [-NoOpen] [-OpenPath /viewer]
+#   -OpenPath 指定浏览器直接打开哪个路径；高清截图导出要用 /viewer
+#   （file:// 下浏览器禁止把本地图片合成进 canvas，走本机 http 就没有这个限制）
 # 注意：本文件必须保存为「UTF-8 带 BOM」，否则 Windows PowerShell 5.1 会把中文读成乱码。
 param(
   [int]$Port = 8787,
-  [switch]$NoOpen
+  [switch]$NoOpen,
+  [string]$OpenPath = '/'
 )
 $ErrorActionPreference = 'Continue'
 # 保证中文在任意控制台都能正确显示：自己切到 UTF-8，不依赖外部 chcp
@@ -87,7 +90,8 @@ Say '    用完想结束时，回到这个窗口按 Ctrl+C。'
 Say ''
 
 $nodeArgs = @($server, '--port', "$Port")
-if (-not $NoOpen) { $nodeArgs += '--open' }
+# --open 后面跟的路径只有在以 / 开头时才会被 server.mjs 采纳，其余一律回退到首页
+if (-not $NoOpen) { $nodeArgs += '--open'; if ($OpenPath -and $OpenPath.StartsWith('/') -and $OpenPath -ne '/') { $nodeArgs += $OpenPath } }
 
 & $node @nodeArgs
 $code = $LASTEXITCODE

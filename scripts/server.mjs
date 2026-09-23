@@ -43,6 +43,15 @@ const val = (f, d = null) => {
   return (v && !v.startsWith('--')) ? v : d;
 };
 const PORT = Number(val('--port', process.env.DM_WEBUI_PORT || 8787));
+/* --open 可以再带一个路径，例如 `--open /viewer` 直接把浏览器开到查看页。
+   高清截图导出需要 http 环境（file:// 下浏览器禁止把本地图片合成进 canvas，
+   实测见 scripts/_explore/_probe_canvas_file.mjs），所以
+   「命令/查看与导出/高清截图.cmd」走的就是这条：起服务 + 直开 /viewer。 */
+const WANT_OPEN = ARGS.includes('--open');
+const OPEN_PATH = (() => {
+  const v = val('--open', null);
+  return (v && v.startsWith('/')) ? v : '/';
+})();
 const HOST = '127.0.0.1';
 const SELF = process.execPath;
 const S = (n) => path.join(ROOT, 'scripts', n);
@@ -901,12 +910,14 @@ server.listen(PORT, HOST, () => {
   STARTED = true;
   ACTUAL_PORT = server.address().port;
   const url = `http://${HOST}:${ACTUAL_PORT}/`;
+  const openUrl = `http://${HOST}:${ACTUAL_PORT}${OPEN_PATH}`;
   console.log('');
   console.log('==========================================');
   console.log('  私信备份 · 本地 WebUI');
   console.log('==========================================');
   console.log('  工作区    ' + ROOT);
   console.log('  地址      ' + url);
+  if (WANT_OPEN && OPEN_PATH !== '/') console.log('  将打开    ' + openUrl);
   console.log('  浏览器    ' + (findBrowser() || '（未找到 Edge / Chrome）'));
   console.log('  OCR 环境  ' + (findOcrPython() ? '已就绪' : '未安装（图内文字/图片描述会跳过）'));
   console.log('');
@@ -914,16 +925,18 @@ server.listen(PORT, HOST, () => {
   console.log('  按 Ctrl+C 结束。');
   console.log('');
 
-  if (ARGS.includes('--open')) {
+  if (WANT_OPEN) {
     // 用默认浏览器打开（打不开也不影响，地址已经打在上面了）
     try {
       const b = findBrowser();
       if (b) {
-        const c = spawn(b, [url], { detached: true, stdio: 'ignore' });
+        const c = spawn(b, [openUrl], { detached: true, stdio: 'ignore' });
         c.unref();
+      } else {
+        console.log('  [!] 没找到 Edge / Chrome，请手动打开：' + openUrl);
       }
     } catch (e) {
-      console.log('  [!] 自动打开浏览器失败：' + e.message);
+      console.log('  [!] 自动打开浏览器失败：' + e.message + '（请手动打开 ' + openUrl + '）');
     }
   }
 });
