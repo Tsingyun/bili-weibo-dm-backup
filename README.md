@@ -19,14 +19,16 @@
 **下载便携一体包 → 解压 → 双击根目录的 `启动.cmd` → 浏览器自动打开界面，剩下全在界面里点。**
 
 > **直接下载：** [dm-backup-portable.zip](https://github.com/Tsingyun/bili-weibo-dm-backup/releases/latest/download/dm-backup-portable.zip)
-> （约 33 MB · Windows 10/11）—— 这个链接永远指向最新一版。
+> （约 33 MB · Windows 10/11）—— 这个链接永远指向**最新一版 Release**。
+> ⚠️ 它是**重新打包的产物**，随 Release 更新、不随每次提交自动更新；
+> 想拿到仓库里最新的改动，请用下面的 clone 走法（源码永远是最新的）。
 
 - 包里**自带 Node 运行时**（`runtime\node\node.exe`），不用另外装任何东西，也不需要管理员权限。
 - 解压到**纯英文、无空格**的路径（比如 `D:\dm-backup`）。
 - 首次打开可能弹「Windows 已保护你的电脑」→ 点「更多信息」→「仍要运行」。
 - 会话配置已经给你建好了，对方的数字 ID 在界面第 3 步里填就行。
 
-下面是**直接 clone 仓库**的走法。功能完全一样，只是得自己装一次 Node。
+下面是**直接 clone 仓库**的走法。功能完全一样，只是得自己装一次 Node、自己从模板造一份 `sessions.json`。
 
 ---
 
