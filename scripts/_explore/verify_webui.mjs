@@ -111,6 +111,12 @@ fs.mkdirSync(TMP, { recursive: true });
 const hadManifest = fs.existsSync(MANIFEST_PATH);
 if (hadManifest) fs.copyFileSync(MANIFEST_PATH, MANIFEST_BAK);
 
+/* 跑之前先记下 imported/ 里已经有什么 —— 导入测试会往里写目录，
+   收尾按「差集」把本次新增的删掉（不能只靠 sessions.json 里还挂着 importBatch，
+   原因见 finally 里那段说明）。 */
+const IMPORTED_DIR = path.join(ROOT, 'imported');
+const importedBefore = new Set(fs.existsSync(IMPORTED_DIR) ? fs.readdirSync(IMPORTED_DIR) : []);
+
 let importedBatch = null;                             // 万一中途失败，finally 里兜底删
 
 try {
@@ -938,16 +944,39 @@ try {
 
   try {
     if (hadManifest && fs.existsSync(MANIFEST_BAK)) {
-      const cur = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
-      const bak = JSON.parse(fs.readFileSync(MANIFEST_BAK, 'utf8'));
-      const key = (s) => JSON.stringify((s.sessions || []).map((x) => x.key).sort());
-      if (key(cur) !== key(bak)) {
+      /* ⚠ 这里必须**按字节**比，不能只比「会话 key 列表」。
+         中途几次写回用的是 `JSON.stringify(…, null, 2)`，而原文件常常没有结尾换行
+         → 语义一样、字节不同（实测 2813 → 2814 字节）。
+         只比 key 就会「认为已经干净 → 不还原」，于是用户真实的 sessions.json
+         每跑一次回归就悄悄多一个换行；而「跑完真实数据一个字节都没变」那条复核
+         会**假报 FAILED** —— 真出事时反而分不清是真改坏还是这个换行。
+         对齐 extras 对 `bili/ocr.json` 的口径：探针跑完必须逐字节复原。 */
+      const curBuf = fs.readFileSync(MANIFEST_PATH);
+      const bakBuf = fs.readFileSync(MANIFEST_BAK);
+      if (!curBuf.equals(bakBuf)) {
         fs.copyFileSync(MANIFEST_BAK, MANIFEST_PATH);
         spawn(process.execPath, [path.join(ROOT, 'scripts', 'build_sessions.mjs')], { cwd: ROOT, stdio: 'ignore' });
-        console.log('  [!] finally：sessions.json 已从备份还原');
+        console.log('  [!] finally：sessions.json 已按字节还原（与备份不一致）');
       }
     }
   } catch (e) { console.log('  [!] 还原 sessions.json 失败，请手动检查：' + e.message); }
+
+  /* 清 imported/ 残留：只按「跑之前有什么 / 跑完多出什么」做差集。
+     ⚠ 不能只依赖上面那段「sessions.json 里还挂着 importBatch」的判定 —— 测试自己在
+     正常路径末尾就会把那条登记删掉，于是 `some(...)` 为 false，批次目录成了孤儿。
+     那一刻留下的目录对**下一条断言**（imported/ 里没有测试残留目录）是致命的：
+     一次异常退出（被 kill / 超时）会让**之后每一次回归都红在同一条**，而人只会
+     以为「这次又不行了」，不会想到是上一轮的尸体 —— 自毒式测试垃圾。
+     （同口径参考 verify_extras 对 snapshots/ 的做法：先记清单，跑完删多出来的。） */
+  try {
+    if (fs.existsSync(IMPORTED_DIR)) {
+      for (const d of fs.readdirSync(IMPORTED_DIR)) {
+        if (importedBefore.has(d)) continue;         // 跑之前就有的，是用户真实的导入，绝不动
+        fs.rmSync(path.join(IMPORTED_DIR, d), { recursive: true, force: true });
+        console.log('  [!] finally：清掉本次导入测试留下的 imported/' + d);
+      }
+    }
+  } catch (e) { console.log('  [!] 清理 imported/ 残留失败，请手动检查：' + e.message); }
 
   try { child.kill(); } catch { /* 已经退了 */ }
 }

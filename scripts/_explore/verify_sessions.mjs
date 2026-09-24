@@ -35,6 +35,23 @@ const PY = process.env.DM_TEST_PYTHON ||
    path.join(ROOT, '.ocr-env', 'bin', 'python')].find((p) => fs.existsSync(p)) ||
   (process.platform === 'win32' ? 'python' : 'python3');
 
+/* ── 环境探针：这里能不能创建子进程？ ──────────────────────────────
+   本沙箱/宿主禁止 node 创建子进程：spawnSync 一律抛 EBUSY（e.status 为 null、
+   stdout/stderr 全空）。下面的小节全靠 run() 起子进程，被拦时若照旧执行，
+   除了每条都误报失败，更糟的是依赖产物的断言会拿到 undefined 直接抛异常，
+   把后面的小节**整段吞掉**（掉数比失败更危险）。
+   所以先探一次：被拦 → 明确报「跳过」+ 独立退出码 2，绝不冒充通过。 */
+function spawnBlocked() {
+  try {
+    execFileSync(NODE, ['-e', '0'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000 });
+    return false;
+  } catch (e) {
+    return e.status === null || e.status === undefined;
+  }
+}
+
+
 // ============ 1. 真实清单 ============
 console.log('\n[1] 真实 sessions.json');
 const real = loadSessions();
@@ -141,6 +158,21 @@ chk('--session 后面直接跟另一个开关 → 报错',
 chk('findSession 认出去不存在的 key',
   /不认识会话/.test(throws(() => M4.findSession('nope')) || ''));
 
+/* ── 环境探针（同 verify_extras）：本沙箱/宿主禁止 node 创建子进程（EBUSY）。
+   §5 / §6 全部靠 execFileSync 起 node / python —— 被拦时这 9 条会全部误报成
+   「失败」（exit null，其实一次都没跑）。明确报「跳过」+ 独立退出码 2。 */
+if (spawnBlocked()) {
+  console.log('\n  [skip] 本环境禁止创建子进程（spawnSync 抛 EBUSY）。');
+  console.log('         §5 build_sessions --check / §6 python 侧 SETS 合并 → 整段跳过。');
+  console.log('         **这不是通过**（上面 40 条静态断言的结论仍然有效）。');
+  console.log('         请在允许创建子进程的环境重跑本套件。');
+  console.log('\n' + '='.repeat(56));
+  console.log(`多会话清单验证：通过 ${pass} · 失败 ${fail} · 跳过（环境不支持子进程：§5/§6）`);
+  console.log('⚠ 有整段被跳过 —— 不要当成全绿。');
+  console.log('='.repeat(56));
+  process.exit(2);
+}
+
 // ============ 5. build_sessions.mjs --check ============
 console.log('\n[5] build_sessions.mjs --check');
 // ⚠ 子进程环境必须显式清掉 DM_SESSIONS_JSON：{...process.env} 里本来就带着它，
@@ -154,7 +186,11 @@ function childEnv(extra) {
 function runBuild(extra) {
   try {
     const out = execFileSync(NODE, [path.join(ROOT, 'scripts', 'build_sessions.mjs'), '--check'],
-      { cwd: ROOT, env: childEnv(extra), encoding: 'utf8' });
+      // ⚠ stdio 必须显式写：默认会给**子进程 stdin 也接一根管道**，而这个沙箱/宿主
+      //    拒绝创建那根管道 → spawnSync 直接抛 EBUSY（e.status 为 null、输出全空）。
+      //    这些子进程都是纯命令行调用、从不读 stdin，所以「忽略 stdin + 只接 stdout/stderr」
+      //    语义完全等价（实测退出码 / stdout / stderr 都能照常拿到）。
+      { cwd: ROOT, env: childEnv(extra), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     return { code: 0, out };
   } catch (e) {
     return { code: e.status, out: (e.stdout || '') + (e.stderr || '') };
@@ -175,7 +211,7 @@ const scriptsDir = path.join(ROOT, 'scripts');
 function py(code, env) {
   try {
     const out = execFileSync(PY, ['-c', code],
-      { cwd: ROOT, env: childEnv(env), encoding: 'utf8' });
+      { cwd: ROOT, env: childEnv(env), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     return { code: 0, out };
   } catch (e) {
     return { code: e.status, out: (e.stdout || '') + (e.stderr || '') };
@@ -209,7 +245,7 @@ print(sorted(a.SETS))
   let code = 0, out = '';
   try {
     execFileSync(PY, [ocr, '--set', 'nosuch'],
-      { cwd: ROOT, env: childEnv({}), encoding: 'utf8' });
+      { cwd: ROOT, env: childEnv({}), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) { code = e.status; out = (e.stderr || '') + (e.stdout || ''); }
   chk('image_ocr.py --set nosuch 被拒绝（exit 2）', code === 2, 'exit ' + code);
   chk('拒绝信息里列出了可用的 set', /weibo/.test(out) && /bili/.test(out), out.trim().slice(0, 200));

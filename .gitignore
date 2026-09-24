@@ -55,6 +55,14 @@
 /scripts/_explore/_tmp/
 # 开发脚本的依赖指针：一行**本机绝对路径**，只在自己机器上有效（见 _deps.mjs）
 /scripts/_explore/.pw-home
+
+# ── verify_webui 的「强制重登」探针目录（2026-09-24 补）──
+# 它会在仓库根临时造一份**假 Cookie 文件**（`SUB=fake-old-cookie; SUBP=fake`），
+# 测完由 `--force` 删掉、只剩空目录（空目录 git 本来不跟踪，所以一直没人发现）。
+# ⚠ 危险的是「测试进行中」那几秒：一边跑回归一边 `git add -A`，就会把这个
+#   cookie_header.txt 带进提交（2026-09-24 实际发生过一次）。
+#   文件名和真实凭据文件同名，进公开仓库观感极差 —— 直接忽略整个目录。
+/_wbtest_forceprobe/
 # 若在仓库里 npm i 过（为了跑 _explore 下的开发脚本），依赖目录同样不入库
 /node_modules/
 

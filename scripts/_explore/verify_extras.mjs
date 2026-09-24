@@ -41,11 +41,32 @@ function run(script, args = []) {
   try {
     const out = execFileSync(NODE, [script, ...args], {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
+      // ⚠ stdio 必须显式写：默认会给**子进程 stdin 也接一根管道**，而这个沙箱/宿主
+      //    拒绝创建那根管道 → spawnSync 直接抛 EBUSY（e.status 为 null、输出全空）。
+      //    这些子进程都是纯命令行调用、从不读 stdin，所以「忽略 stdin + 只接 stdout/stderr」
+      //    语义完全等价（实测退出码 / stdout / stderr 都能照常拿到）。
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
     });
     return { code: 0, out };
   } catch (e) {
     return { code: e.status ?? -1, out: (e.stdout || '') + (e.stderr || '') };
+  }
+}
+
+/* ── 环境探针：这里能不能创建子进程？ ──────────────────────────────
+   本沙箱/宿主禁止 node 创建子进程：spawnSync 一律抛 EBUSY（e.status 为 null、
+   stdout/stderr 全空）。下面的小节全靠 run() 起子进程，被拦时若照旧执行，
+   除了每条都误报失败，更糟的是依赖产物的断言会拿到 undefined 直接抛异常，
+   把后面的小节**整段吞掉**（掉数比失败更危险）。
+   所以先探一次：被拦 → 明确报「跳过」+ 独立退出码 2，绝不冒充通过。 */
+function spawnBlocked() {
+  try {
+    execFileSync(NODE, ['-e', '0'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20000 });
+    return false;
+  } catch (e) {
+    return e.status === null || e.status === undefined;
   }
 }
 
@@ -174,6 +195,18 @@ chk(localDay(dayStart('2026-09-16')) === '2026-09-16' && localDay(dayStart('2026
 /* ============================================================
    2. export_jsonl.mjs
    ============================================================ */
+if (spawnBlocked()) {
+  console.log('\n  [skip] 本环境禁止创建子进程（spawnSync 抛 EBUSY）。');
+  console.log('         §2 结构化导出 / §3 全文检索 / §4 表情包导出 / §6 快照与体检 / [17] doctor --fix');
+  console.log('         全部依赖 run() 起子进程 → 从这里起整段跳过。**这不是通过。**');
+  console.log('         请在允许创建子进程的环境重跑本套件。');
+  console.log('\n' + '='.repeat(56));
+  console.log(`新增功能验证：通过 ${pass} · 失败 ${fail} · 跳过（环境不支持子进程：§2/§3/§4/§6/[17]）`);
+  console.log('⚠ 有整段被跳过 —— 不要当成全绿。');
+  console.log('='.repeat(56));
+  process.exit(2);   // 2 = 环境不满足（既不是通过，也不是断言失败）
+}
+
 section('[2] P1-10 结构化导出（export_jsonl.mjs）');
 const outDir = path.join(TMP, 'verify_export');
 fs.rmSync(outDir, { recursive: true, force: true });
@@ -207,8 +240,15 @@ for (const S of SESSIONS) {
 const sample = expRows.find((r) => r.session === 'bili') || expRows[0];
 const needFields = ['session', 'i', 'id', 'ts', 'date', 'time', 'from', 'sender', 'type',
   'media_type', 'kind', 'text', 'images', 'ocr', 'vlm', 'card', 'links'];
-chk(needFields.every((f) => f in sample), '首条记录字段齐全',
-  needFields.filter((f) => !(f in sample)).join(',') || '全部命中');
+/* ⚠ 这里是原版的崩溃点：导出没有产物时 expRows 为空 → sample 是 undefined
+   → `f in sample` 抛 TypeError，把 [3][4][5][6][17] 全部吞掉（掉数比失败更危险）。
+   跟沙箱无关：脚本真报错 / 磁盘满时同样会踩到。 */
+if (sample) {
+  chk(needFields.every((f) => f in sample), '首条记录字段齐全',
+    needFields.filter((f) => !(f in sample)).join(',') || '全部命中');
+} else {
+  chk(false, '首条记录字段齐全', '没有任何导出记录 —— 见上面「导出脚本退出码」那条');
+}
 
 // 字段值与原始数据一致（挑一条有图的）
 const biliMsgs = readJson(path.join(ROOT, 'bili', 'messages.json'));
@@ -270,7 +310,8 @@ const maskRes = run(path.join(SCRIPTS, 'export_jsonl.mjs'),
   ['--session', 'weibo', '--mask', '--out', path.relative(ROOT, maskDir), '--quiet']);
 if (maskRes.code === 0) {
   const f = fs.readdirSync(maskDir).find((x) => x.endsWith('.jsonl'));
-  const rows = fs.readFileSync(path.join(maskDir, f), 'utf8')
+  // f 可能是 undefined（没产出文件）→ 原版 path.join(maskDir, undefined) 会直接抛异常
+  const rows = (f ? fs.readFileSync(path.join(maskDir, f), 'utf8') : '')
     .split('\n').filter(Boolean).map((l) => JSON.parse(l));
   // ⚠ 只能在「自由文本字段」里查手机号形态，绝不能对整行做正则：
   //   ts 是 13 位毫秒时间戳（1[3-9]\d{9} + 3 位），整行匹配必然每一行都命中。
