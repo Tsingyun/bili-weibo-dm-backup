@@ -20,8 +20,8 @@
 
 > **直接下载：** [dm-backup-portable.zip](https://github.com/Tsingyun/bili-weibo-dm-backup/releases/latest/download/dm-backup-portable.zip)
 > （约 33 MB · Windows 10/11）—— 这个链接永远指向**最新一版 Release**。
-> ⚠️ 它是**重新打包的产物**，随 Release 更新、不随每次提交自动更新；
-> 想拿到仓库里最新的改动，请用下面的 clone 走法（源码永远是最新的）。
+> 便携包由 [.github/workflows/portable-release.yml](.github/workflows/portable-release.yml) 在**推 tag 时自动打包发布**，
+> 包里的代码就是 tag 指向的那一份，不会落后源码；想拿仓库里还没发版的最新改动，请用下面的 clone 走法。
 
 - 包里**自带 Node 运行时**（`runtime\node\node.exe`），不用另外装任何东西，也不需要管理员权限。
 - 解压到**纯英文、无空格**的路径（比如 `D:\dm-backup`）。

@@ -1,0 +1,19 @@
+# 行尾口径 —— 让「clone」「Download ZIP」「便携包」拿到同一份字节
+# ==============================================================
+# 为什么必须有这个文件：
+#   仓库里的 blob 全部是 LF，但没有属性表时，「下载者的行尾」由他本机的
+#   core.autocrlf 决定 —— Download ZIP 得 LF、git clone(Git for Windows 默认
+#   autocrlf=true) 得 CRLF，两条官方下载路径连字节都不一样。
+#   更要命的是 .cmd：只有 LF 行尾的批处理文件，goto/call 标签在 Windows 上
+#   是已知失败模式（cmd.exe 按字节偏移找标签）。所以 .cmd/.ps1/.bat 必须钉死 CRLF。
+#
+# 2026-09-24 《发行版本一致性审计》P1 的修复。
+# 改动本文件后需要跑一次：git add --renormalize . && git commit
+# 复核口径：git ls-files --eol 里不该再出现 w/mixed。
+
+* text=auto eol=lf
+
+# Windows 可执行脚本钉死 CRLF（cmd.exe 的 goto 标签按 CRLF 寻址）
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

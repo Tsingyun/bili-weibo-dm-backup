@@ -63,13 +63,16 @@ if (-not $node) {
   exit 1
 }
 
-# 版本门槛：本项目用到 node:string_decoder / 顶层 await 的 ESM，18 以下会直接报语法错。
+# 版本门槛：本项目用到 node:string_decoder（全文检索 build_fts.mjs / search.mjs）
+# 与顶层 await 的 ESM —— node:sqlite 在 Node 22 才进标准库，18/20 会「过了门槛才炸」，
+# 且报错（ERR_UNKNOWN_BUILTIN_MODULE）看不出跟版本有关，所以这里一步拦到位。
 $ver = (& $node -e "process.stdout.write(process.versions.node)") 2>$null
 $major = 0
 try { $major = [int]($ver.Split('.')[0]) } catch { $major = 0 }
-if ($major -lt 18) {
-  Say ('[×] Node.js 版本太低：当前 ' + $ver + '，需要 18 或更高。')
-  Say '    去 https://nodejs.org/ 下 LTS 版覆盖安装即可。'
+if ($major -lt 22) {
+  Say ('[×] Node.js 版本太低：当前 ' + $ver + '，需要 22 或更高。')
+  Say '    （全文检索用的 node:sqlite 在 Node 22 才有，18/20 跑到「重建搜索索引」才会炸。）'
+  Say '    去 https://nodejs.org/ 下 LTS 版（22 或 24）覆盖安装即可，装完重开本窗口。'
   exit 1
 }
 

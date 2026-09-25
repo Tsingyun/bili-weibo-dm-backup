@@ -1,0 +1,96 @@
+name: 便携包发布
+
+# 触发：推 v* tag → 自动打便携一体包 → 发 GitHub Release。
+# 为什么要有这个流水线：便携包是**构建产物**，不进 git；以前靠人工
+# `node scripts/pack_portable.mjs` + 手动传 Release，结果 Release 落后源码
+# 两天才被发现（《发行版本一致性审计》P0）。改成「发版即打 tag」，从此不可能漂移。
+#
+# 手动跑：workflow_dispatch 也可以触发，但只打包、传 artifact，不发布。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: 取源码（tag 对应的那一份）
+        uses: actions/checkout@v4
+
+      # 分发 node.exe 就等于分发 Node.js，必须连它的 LICENSE 一起带
+      # （pack_portable.mjs 找不到 LICENSE 会拒绝打包，这里是双保险）。
+      - name: 装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 定位运行时（node.exe + 它的 LICENSE）
+        id: rt
+        shell: pwsh
+        run: |
+          $exe = (node -p "process.execPath")
+          $dir = Split-Path $exe
+          $lic = Join-Path $dir 'LICENSE'
+          if (-not (Test-Path $lic)) {
+            Write-Host "运行时目录缺 LICENSE：$dir"
+            Get-ChildItem $dir | ForEach-Object { Write-Host "  $($_.Name)" }
+            throw '没找到 Node 的 LICENSE —— 分发二进制不带许可证不合规，拒绝继续。'
+          }
+          "exe=$exe" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+          "lic=$lic" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+          "ver=$((node --version))" | Out-File -Append -FilePath $env:GITHUB_OUTPUT
+          Write-Host "运行时 $exe （$((node --version))）· 许可证 $lic"
+
+      - name: 打便携一体包（自带隐私扫描）
+        shell: pwsh
+        run: >
+          node scripts/pack_portable.mjs
+          --node "${{ steps.rt.outputs.exe }}"
+          --runtime-license "${{ steps.rt.outputs.lic }}"
+          --out dist
+
+      - name: 复核产物（zip 必须存在，且非空）
+        shell: pwsh
+        run: |
+          $zip = 'dist/dm-backup-portable.zip'
+          if (-not (Test-Path $zip)) { throw '没打出 dm-backup-portable.zip' }
+          $len = (Get-Item $zip).Length
+          if ($len -lt 10MB) { throw "zip 只有 $len 字节，明显不对" }
+          Write-Host ("产物 " + (Get-Item $zip).Length / 1MB + " MB")
+          Get-ChildItem dist/dm-backup | Select-Object Name
+
+      - name: 上传构建产物（手动触发时从这里取）
+        uses: actions/upload-artifact@v4
+        with:
+          name: dm-backup-portable
+          path: dist/dm-backup-portable.zip
+          if-no-files-found: error
+
+      - name: 发布 Release（仅 tag 触发时）
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_VER: ${{ steps.rt.outputs.ver }}
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag.StartsWith('v')) { Write-Host '非 tag 触发，跳过发布'; exit 0 }
+          # {{NODE_VERSION}} 占位符替换成真实版本
+          (Get-Content .github/portable-release-notes.md -Raw) `
+            -replace '\{\{NODE_VERSION\}\}', $env:NODE_VER `
+            | Set-Content release_notes.md -Encoding utf8
+          Write-Host "发布 $tag"
+          gh release create "$tag" dist/dm-backup-portable.zip `
+            --title "便携版 $tag · Windows 一体包（解压双击即用）" `
+            --notes-file release_notes.md
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Release 已存在，改为覆盖上传资产'
+            gh release upload "$tag" dist/dm-backup-portable.zip --clobber
+          }
