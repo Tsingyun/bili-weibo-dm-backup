@@ -110,6 +110,40 @@ function stripCommonRoot(entries) {
   return files;
 }
 
+/**
+ * messages.json（裸数组 + 独立 meta.json）→ 查看页 boot() 吃的 {meta, messages} 对象。
+ * ------------------------------------------------------------------
+ * 查看页 `boot()` 读的是 `D.meta` / `D.messages`（见 查看备份.html），
+ * 而 bundle 里 messages.json 按导出器口径是**裸数组**、meta 在旁边的 meta.json
+ * —— 原样透传成 .js 的话，导入的会话在查看页里一条都渲染不出来
+ * （`D.messages` 是 undefined → ALL 为空 → 显示「没有匹配的消息」）。
+ * 所以生成的 .js 必须在这里合成对象形状；bundle 内的 .json 保持不动
+ * （导入端的条数统计 / build_fts / audit_gaps 都按数组读）。
+ * 已经是对象形状的老包原样透传。
+ */
+function wrapMessagesForViewer(raw, dirAbs) {
+  let arr = null;
+  try {
+    const j = JSON.parse(raw);
+    if (Array.isArray(j)) arr = j;
+    else if (j && Array.isArray(j.messages)) return raw;   // 已是对象形状
+  } catch { /* 解析不了 → 按空数组走，至少页面能打开而不是白屏 */ }
+  if (!arr) arr = [];
+  let meta = {};
+  const mp = path.join(dirAbs, 'meta.json');
+  if (fs.existsSync(mp)) {
+    try { meta = JSON.parse(fs.readFileSync(mp, 'utf8')) || {}; } catch { /* 保持 {} */ }
+  }
+  if (meta.total == null) meta.total = arr.length;
+  if (arr.length) {
+    const t0 = arr[0].time || (arr[0].ts != null ? new Date(arr[0].ts).toISOString() : null);
+    const t1 = arr[arr.length - 1].time || (arr[arr.length - 1].ts != null ? new Date(arr[arr.length - 1].ts).toISOString() : null);
+    if (meta.first_time == null) meta.first_time = t0;
+    if (meta.last_time == null) meta.last_time = t1;
+  }
+  return JSON.stringify({ meta, messages: arr });
+}
+
 /** 补齐四个 .js 包装（查看页只认 <script src>） */
 function ensureWrappers(dirAbs, key, entries) {
   const globals = defaultGlobals(key);
@@ -128,6 +162,7 @@ function ensureWrappers(dirAbs, key, entries) {
     if (fs.existsSync(jsonPath)) {
       raw = fs.readFileSync(jsonPath, 'utf8').trim() || fallback;
     }
+    if (base === 'messages') raw = wrapMessagesForViewer(raw, dirAbs);
     fs.writeFileSync(path.join(dirAbs, base + '.js'), jsAssign(gname, raw), 'utf8');
     made.push(base + '.js');
   }
@@ -325,10 +360,14 @@ export function importBackup(opts = {}) {
   writeJson(MANIFEST_PATH, man);
 
   // 重新生成 sessions.js，让查看页认得出这些会话
+  /* ⚠ stdio 必须显式写成 ['ignore','pipe','pipe']：build_sessions.mjs 是纯生成脚本，
+     根本不读 stdin，但默认 stdio 会给它接一根 stdin 管道 —— 在受限宿主上这根管道
+     会直接把进程挡在门外（实测 EBUSY：退出码 null、stdout/stderr 全空），
+     表现是「导入成功了，可查看页顶上就是没有这个会话」。 */
   let sessionsJs = 'ok';
   try {
     execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build_sessions.mjs')],
-      { cwd: ROOT, encoding: 'utf8' });
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
     sessionsJs = '失败：' + (e.stdout || e.message);
   }
@@ -386,7 +425,7 @@ export function deleteImported(batchRaw) {
 
   try {
     execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build_sessions.mjs')],
-      { cwd: ROOT, encoding: 'utf8' });
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch {}
   return { removed, batch };
 }

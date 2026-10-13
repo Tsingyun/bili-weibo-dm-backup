@@ -25,8 +25,12 @@ const OUT = path.join(ROOT, 'sessions.js');
 
 function render(list) {
   // 只保留页面需要的字段（assets / skip 这类给脚本用的不进页面）
+  /* ⚠ platform **必须**一起写进 sessions.js：页面靠它决定分类口径 / 卡片样式 /
+     统计口径说明。以前漏了这个字段，页面只能拿 `key === 'bili'` 猜 ——
+     于是任何 key 不叫 bili 的 B站会话（导入的他人备份就是）都会被当成微博，
+     走文案匹配那一套：空正文 + 空 autoReply 的消息全被误判成「自动回复」。 */
   const slim = list.map(s => ({
-    key: s.key, label: s.label, title: s.title, dir: s.dir,
+    key: s.key, label: s.label, title: s.title, dir: s.dir, platform: s.platform,
     builtin: s.builtin, globals: s.globals, files: s.files,
     autoReply: s.autoReply, empty: s.empty,
   }));

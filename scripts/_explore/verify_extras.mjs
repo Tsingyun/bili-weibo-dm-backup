@@ -21,6 +21,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { rmTree } from './_deps.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -110,16 +111,20 @@ const { msgKind, maskText, localDay, dayStart, dayEnd, DAY_CUT_MS } = await impo
 
 let pageFn = null;
 if (pageMsgKindSrc) {
-  pageFn = new Function('SRC', 'AUTO_REPLY', 'RE_GIFT', 'RE_SYSTIP',
+  pageFn = new Function('SRC', 'AUTO_REPLY', 'RE_GIFT', 'RE_SYSTIP', 'IS_BILI',
     pageMsgKindSrc + '\nreturn msgKind;')(
-    { key: 'weibo' }, '', RE_GIFT_PAGE, RE_SYSTIP_PAGE);
-  // 页面里 SRC.key === 'bili' 才走结构化分支，所以每个会话单独构造一个
+    { key: 'weibo', platform: 'weibo' }, '', RE_GIFT_PAGE, RE_SYSTIP_PAGE, false);
+  // 页面按 IS_BILI（由 platform 推出）决定走哪套口径，所以每个会话单独构造一个
 }
 function pageKindFor(session, m) {
   if (!pageMsgKindSrc) return null;
-  const fn = new Function('SRC', 'AUTO_REPLY', 'RE_GIFT', 'RE_SYSTIP',
+  // IS_BILI 在页面里是 boot() 的局部变量（(SRC.platform || SRC.key) === 'bili'），
+  // 这里照同一条式子算出来再注入 —— 顺带把「key 不叫 bili 的 B站会话」这条也覆盖到。
+  const isBili = (session.platform || session.key) === 'bili';
+  const fn = new Function('SRC', 'AUTO_REPLY', 'RE_GIFT', 'RE_SYSTIP', 'IS_BILI',
     pageMsgKindSrc + '\nreturn msgKind;')(
-    { key: session.key }, session.autoReply || '', RE_GIFT_PAGE, RE_SYSTIP_PAGE);
+    { key: session.key, platform: session.platform || '' }, session.autoReply || '',
+    RE_GIFT_PAGE, RE_SYSTIP_PAGE, isBili);
   return fn(m);
 }
 
@@ -209,7 +214,7 @@ if (spawnBlocked()) {
 
 section('[2] P1-10 结构化导出（export_jsonl.mjs）');
 const outDir = path.join(TMP, 'verify_export');
-fs.rmSync(outDir, { recursive: true, force: true });
+rmTree(outDir);   // ⚠ 不用 fs.rmSync：宿主 shim 会同回合累计限流（见 _deps.mjs）
 fs.mkdirSync(outDir, { recursive: true });
 
 const expRes = run(path.join(SCRIPTS, 'export_jsonl.mjs'), ['--out', path.relative(ROOT, outDir), '--quiet']);
@@ -223,7 +228,12 @@ const perSession = {};
 for (const f of expFiles) {
   const lines = fs.readFileSync(path.join(outDir, f), 'utf8').split('\n').filter(Boolean);
   const rows = lines.map((l) => JSON.parse(l));
-  const key = f.split('_')[0];
+  /* ⚠ 不能用 `f.split('_')[0]` 反推 key：会话 key 本身可以带下划线
+     （导入会话就是 `<批次>_<子目录>`，例如 tangshu_daniaigou_bili），
+     一刀切会只拿到 'tangshu'。改成按已知 key 做**最长匹配**前缀。 */
+  const key = SESSIONS.map((s) => s.key)
+    .filter((k) => f.startsWith(k + '_'))
+    .sort((a, b) => b.length - a.length)[0] || f.split('_')[0];
   perSession[key] = rows;
   expRows = expRows.concat(rows);
   chk(rows.length > 0, `${key} 有记录`, `${rows.length.toLocaleString()} 条`);
@@ -305,7 +315,7 @@ if (sinceRes.code === 0) {
 
 // 打码：全量打码导出后不应残留手机号形态
 const maskDir = path.join(TMP, 'verify_mask');
-fs.rmSync(maskDir, { recursive: true, force: true });
+rmTree(maskDir);
 const maskRes = run(path.join(SCRIPTS, 'export_jsonl.mjs'),
   ['--session', 'weibo', '--mask', '--out', path.relative(ROOT, maskDir), '--quiet']);
 if (maskRes.code === 0) {
@@ -408,15 +418,25 @@ chk(!/\u0001/.test(s1.out + s2.out), '输出里不含内部分隔符 \\u0001');
 chk(!/我的昵称 text$/.test(s1.out.split('\n').find((l) => /^\d{4}-/.test(l)) || ''),
   '展示正文不含署名/类型尾巴');
 
-const s3 = run(path.join(SCRIPTS, 'search.mjs'), ['生日快乐', '--json', '--limit', '1']);
+/* 期望值一律从数据读，两处改动都是为了「不再依赖全局搜索的命中顺序」：
+   ① 索引里现在可能有多个会话（含导入的他人备份），全局搜索的第一条不一定是本会话的
+      → 限定 --session；
+   ② 不把真实聊天正文写死进版本库（公开仓库不带私人内容）。 */
+const B_SESS = SESSIONS.find((s) => s.key === 'bili');
+const biliCand = readJson(path.join(ROOT, B_SESS.dir, 'messages.json'))
+  .filter((m) => (m.text || '').includes('生日快乐'));
+const s3 = run(path.join(SCRIPTS, 'search.mjs'), ['--session', 'bili', '生日快乐', '--json', '--limit', '1']);
 if (s3.code === 0) {
   let j = null;
   try { j = JSON.parse(s3.out); } catch { /* 下面断言失败给出信息 */ }
   chk(!!j, '--json 输出是合法 JSON');
   if (j) {
     chk(Array.isArray(j.hits) && j.hits.length === 1, '--json 命中条数正确');
-    chk(j.hits[0].text === '小岁🥺可以对我说句生日快乐吗', '--json 的 text 是干净展示正文', j.hits[0].text);
-    chk(j.hits[0].from === 'me' && j.hits[0].kind === 'count', '--json 的 from / kind 对齐', `${j.hits[0].from}/${j.hits[0].kind}`);
+    const src = j.hits.length ? biliCand.find((m) => m.text === j.hits[0].text) : null;
+    chk(!!src, '--json 的 text 是干净展示正文（与数据里的正文逐字一致）', j.hits[0] && j.hits[0].text);
+    chk(!!src && j.hits[0].from === src.from &&
+        j.hits[0].kind === msgKind(src, { platform: B_SESS.platform, autoReply: B_SESS.autoReply }),
+        '--json 的 from / kind 对齐', j.hits[0] && `${j.hits[0].from}/${j.hits[0].kind}`);
   }
 } else {
   chk(false, '--json 能正常执行', s3.out.slice(-200));
@@ -433,7 +453,7 @@ chk(s5.code === 0 && /正则/.test(s5.out) && /命中 1 条/.test(s5.out), '--re
    ============================================================ */
 section('[4] P2-15 表情包导出（export_faces.mjs）');
 const faceDir = path.join(TMP, 'verify_faces');
-fs.rmSync(faceDir, { recursive: true, force: true });
+rmTree(faceDir);
 const faceRes = run(path.join(SCRIPTS, 'export_faces.mjs'), ['--session', 'bili', '--out', path.relative(ROOT, faceDir), '--top', '30', '--quiet']);
 chk(faceRes.code === 0, '导出脚本退出码 0', faceRes.code ? faceRes.out.slice(-300) : '');
 
@@ -592,7 +612,7 @@ let snapCleaned = 0;
 if (fs.existsSync(SNAP_ROOT)) {
   for (const d of fs.readdirSync(SNAP_ROOT)) {
     if (snapBefore.has(d)) continue;
-    fs.rmSync(path.join(SNAP_ROOT, d), { recursive: true, force: true });
+    rmTree(path.join(SNAP_ROOT, d));
     snapCleaned++;
   }
 }
@@ -684,7 +704,7 @@ console.log('='.repeat(56));
    要留下的东西请放到 scripts/_explore/ 下（如 verify_*.mjs / _negctl_*.mjs）。 */
 if (!fail) {
   try {
-    fs.rmSync(TMP, { recursive: true, force: true });
+    rmTree(TMP);
     console.log('（已清理测试中间产物 scripts/_explore/_tmp/；有失败时会保留）');
   } catch { /* 清理失败不影响结论 */ }
 }

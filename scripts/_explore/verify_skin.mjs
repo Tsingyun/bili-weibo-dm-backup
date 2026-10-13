@@ -51,8 +51,12 @@ function head(t) { console.log('\n' + t); }
 /* ---------- 期望值从真实数据算，不写死 ---------- */
 /* ⚠ 这里只读「结构性字段」，不打印任何昵称 / uid */
 const SESS = JSON.parse(fs.readFileSync(path.join(ROOT, 'sessions.json'), 'utf8'));
-const LIST = (Array.isArray(SESS) ? SESS : SESS.sessions || []).filter(s => !s.imported);
+const RAW_LIST = Array.isArray(SESS) ? SESS : SESS.sessions || [];
+const LIST = RAW_LIST.filter(s => !s.imported);                  // 皮肤测试只跑内置两个
 const SRC_KEYS = LIST.map(s => s.key);
+/* ⚠ 顶部切换条会渲染**所有**会话（含导入的他人备份），所以它的条数要用未过滤的清单。
+   这里曾经拿 SRC_KEYS（过滤过的）比，导入一份备份后就会误报。 */
+const ALL_KEYS = RAW_LIST.map(s => s.key);
 const dirOf = k => ((LIST.find(s => s.key === k) || {}).dir || '');
 const metaOf = k => JSON.parse(fs.readFileSync(
   path.join(ROOT, dirOf(k).replace(/\\/g, '/'), 'meta.json'), 'utf8'));
@@ -212,8 +216,8 @@ head('=== 1. 皮肤由数据源决定（切换按钮已删）===');
     ctl.skinSw === 0 && ctl.skinbox === 0 && ctl.anyBtn === 0, JSON.stringify(ctl));
 
   const nSrc = await page.$$eval('#srcSw button[data-src]', ns => ns.length);
-  ok('数据源切换还在（仍是 ' + SRC_KEYS.length + ' 个）—— 现在它是唯一决定外观的开关',
-    nSrc === SRC_KEYS.length, nSrc);
+  ok('数据源切换还在（' + ALL_KEYS.length + ' 个会话各一个）—— 现在它是唯一决定外观的开关',
+    nSrc === ALL_KEYS.length, nSrc);
   ok('role=tablist 只剩数据源这一条（不会再有两排胶囊让人认错）',
     ctl.tabs.length === 1 && /备份来源/.test(ctl.tabs[0]), JSON.stringify(ctl.tabs));
 
@@ -892,7 +896,12 @@ head('=== 9. 皮肤模式下高清截图导出不受影响（含 SHOT_* 度量�
     await page.click('#shotGo');
     await page.waitForFunction(() => /已生成|失败|没能导出/.test(document.getElementById('shotProg').innerText),
       null, { timeout: 120000 });
-    await page.waitForTimeout(600);
+    /* 下载是异步落盘，固定等几百毫秒不稳（页面现在要一次装下多个会话的数据，
+       包括导入的他人备份，越重的页面下载事件到得越晚）→ 轮询等到 PNG 出现。 */
+    for (let i = 0; i < 60; i++) {
+      if (got.some(p => typeof p === 'string' && /\.png$/i.test(p))) break;
+      await page.waitForTimeout(250);
+    }
 
     const st = await page.evaluate(() => window.__shotStats || null);
     const m = st && st.metrics, E = EXPECT[key];

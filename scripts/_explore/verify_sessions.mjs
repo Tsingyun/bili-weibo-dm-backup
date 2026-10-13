@@ -55,7 +55,12 @@ function spawnBlocked() {
 // ============ 1. 真实清单 ============
 console.log('\n[1] 真实 sessions.json');
 const real = loadSessions();
-chk('共 2 个会话', real.length === 2, real.map(s => s.key).join(','));
+/* ⚠ 别写死「共 2 个」：本机随时可能导入别人的备份（imported 会话），真实清单的
+   条数会变。断言的语义应当是「归一化既不丢也不重」—— 拿清单文件独立读一遍对照。 */
+const rawMan = JSON.parse(fs.readFileSync(path.join(ROOT, 'sessions.json'), 'utf8'));
+const rawList = Array.isArray(rawMan) ? rawMan : (rawMan.sessions || []);
+chk('会话数 == 清单里写的条数（不丢不重）', real.length === rawList.length,
+    real.length + ' / ' + rawList.length + '：' + real.map(s => s.key).join(','));
 const W = real.find(s => s.key === 'weibo');
 const B = real.find(s => s.key === 'bili');
 chk('weibo / bili 都在', !!W && !!B);

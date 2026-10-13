@@ -1426,13 +1426,13 @@ html[data-skin="bili"] .day span{background:none;border:0;padding:0}
    ========================================================== */
 var BUILTIN_SESSIONS = [
   {
-    key:'weibo', label:'微博', title:'微博私信备份', dir:'data', builtin:true,
+    key:'weibo', label:'微博', title:'微博私信备份', dir:'data', platform:'weibo', builtin:true,
     globals:{ data:'DM_DATA', faces:'DM_FACES', ocr:'DM_OCR', vlm:'DM_VLM' },
     autoReply:'',
     empty:'未找到数据文件 <code>data/messages.js</code><br>请先运行一次「命令/备份与更新/更新备份.cmd」',
   },
   {
-    key:'bili', label:'B站', title:'B站私信备份', dir:'bili', builtin:true,
+    key:'bili', label:'B站', title:'B站私信备份', dir:'bili', platform:'bili', builtin:true,
     globals:{ data:'DM_DATA_B', faces:'DM_FACES_B', ocr:'DM_OCR_B', vlm:'DM_VLM_B' },
     autoReply:'',
     empty:'未找到数据文件 <code>bili/messages.js</code><br>请先运行一次「命令/备份与更新/更新B站备份.cmd」' +
@@ -1452,6 +1452,9 @@ SESSION_LIST.forEach(function(s){
     label: s.label || s.key,
     title: s.title || ((s.label || s.key) + '私信备份'),
     dir: s.dir || '',
+    /* 平台**只认 sessions.js 里写的 platform**，不再拿 key 猜：
+       导入会话的 key 形如 tangshu_daniaigou_bili，`key === 'bili'` 会判错。 */
+    platform: s.platform || '',
     builtin: !!s.builtin,
     data: g.data ? window[g.data] : undefined,
     faces: g.faces ? window[g.faces] : undefined,
@@ -1539,6 +1542,9 @@ function boot(srcKey){
   }
 
   var META = D.meta || {}, ALL = D.messages || [];
+  /* 是否走 B站口径：**按 platform**（sessions.js 现在会带上它）。
+     旧 sessions.js 没这个字段时退回 key 判断，两者都判不出就按微博处理。 */
+  var IS_BILI = (SRC.platform || SRC.key) === 'bili';
   /* 双方显示名一律从数据里取 —— 页面里不写死任何昵称。
      换人 / 换账号只需改 sessions.json 后重抓，查看页不用动。 */
   var PEER_LABEL = META.peer_name || '对方';
@@ -1826,7 +1832,7 @@ function boot(srcKey){
     if(!c) return;
     c.setAttribute('aria-pressed', st.hideAuto ? 'true' : 'false');
     c.textContent = st.hideAuto ? '🙈 自动回复已隐藏' : '🚫 自动回复';
-    c.title = (SRC.key === 'bili')
+    c.title = IS_BILI
       ? '一键隐藏 / 显示 B站的自动回复：接口 msg_source 为 8~11、17，以及关注后的自动推送（msg_type 16）'
       : '一键隐藏 / 显示' + esc(PEER_LABEL) + '的自动回复「' + AUTO_REPLY + '」';
   }
@@ -1916,7 +1922,7 @@ function boot(srcKey){
   }
   // 按当前数据源选归一化规则（微博那套逻辑保持原样，不受影响）
   function linkKey(u){
-    if(SRC.key === 'bili') return biliKey(u) || String(u || '');
+    if(IS_BILI) return biliKey(u) || String(u || '');
     return weiboKey(u) || String(u || '');
   }
   function fmtShort(created){
@@ -2859,7 +2865,7 @@ function boot(srcKey){
              msg_type   16=关注后的自动推送    5=撤回    18=系统提示
                         10=官方通知 13=图片卡片 301~306=粉丝团提示 */
   function msgKind(m){
-    if(SRC.key === 'bili'){
+    if(IS_BILI){
       /* 实测口径（2026-09-15 首次全量 2,912 条）msg_type 只出现 1/2/5/6/7/10/14：
            1=文字  2=图片  5=撤回  6=自定义表情  7=分享视频·相簿·专栏  10=官方通知  14=分享直播
          下面 13 / 16 / 18 / 301~306 属防御性保留（别的会话可能出现，本会话未触发）。
@@ -2875,7 +2881,10 @@ function boot(srcKey){
       return 'count';
     }
     var t = (m.text || '').trim();
-    if(t === AUTO_REPLY) return 'auto';
+    /* ⚠ AUTO_REPLY 必须非空才比较：没配自动回复文案时它是 ''，
+       而卡片 / 纯图片消息的正文也是 '' —— 直接比较会把这些全判成「自动回复」。
+       命令行侧 msg_kind.mjs 早就是这个写法，两边必须对得上。 */
+    if(AUTO_REPLY && t === AUTO_REPLY) return 'auto';
     if(RE_GIFT.test(t)) return 'gift';
     if(RE_SYSTIP.test(t)) return 'sys';
     return 'count';
@@ -3151,7 +3160,7 @@ function boot(srcKey){
   function renderCaliber(){
     var el = document.getElementById('caliber');
     if(!el) return;
-    el.innerHTML = (SRC.key === 'bili') ? caliberBili() : caliberWeibo();
+    el.innerHTML = IS_BILI ? caliberBili() : caliberWeibo();
   }
 
   function caliberWeibo(){
