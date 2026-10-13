@@ -172,6 +172,29 @@
 </style>
 </head>
 <body>
+<!--
+  ══════════════════════════════════════════════════════════════
+  ⚠⚠ 本设计稿已于 2026-10-13 作废（保留只为留证据链，别再照它改代码）
+  ══════════════════════════════════════════════════════════════
+  它照的是**微博 App** 私信会话页（UDC 文章 + 官方定稿截图）：
+    我方蓝气泡 #3da7fb、白字、圆角 10px、头像 34px、聊天底 #ececec。
+  而用户要的是**微博网页版**私信（https://api.weibo.com/chat）。一手实测（2026-10-13）：
+    我方浅蓝 #e5f3fd 压深字 #333、对方纯白 #fff 压 #333；
+    两边都描 1px solid #e5e5e5、圆角 5px、padding 11px 16px、正文 14px/20px；
+    气泡 max-width 390px（fit-content）、头像 30px 正圆、气泡↔头像 11px、消息行 8px；
+    气泡角 = 5px 边框拼出的直角小三角（top:15px，探出约 8px）；
+    1:1 会话**没有昵称行**（原站只有群聊才画）；
+    时间 = 居中 12px 细字分隔条，间隔 > 5 分钟或每日首条才出（isshowmsgtime / formatDate）；
+    侧栏 = 深色会话列表 #33353a，聊天区白底。
+  查看备份.html 的微博皮肤已按上面这套网页版规格重做，验收在
+  scripts/_explore/verify_skin.mjs 第 3 节 + _probe_shot_skin.mjs。
+-->
+<div style="margin:14px auto;max-width:760px;padding:12px 16px;border:1px solid #e0a800;background:#fff8e1;color:#5c4700;font:14px/1.7 -apple-system,'Segoe UI','Microsoft YaHei',sans-serif;border-radius:8px">
+  <b>⚠ 本设计稿已作废（2026-10-13）</b>：它还原的是<b>微博 App</b> 私信会话页（蓝气泡 #3da7fb / 圆角 10px / 头像 34px）。
+  而「查看备份.html」的微博皮肤已按<b>微博网页版私信</b>（api.weibo.com/chat）重做：我方浅蓝
+  <code>#e5f3fd</code> 压深字 <code>#333</code>、对方纯白、双边 1px <code>#e5e5e5</code>、圆角 5px、padding 11px 16px、
+  头像 30px、1:1 无昵称行、时间走 &gt;5 分钟的居中分隔条。详见 <code>使用说明.md</code> 第 23 节。
+</div>
 <div class="phone">
 
   <header class="nav">

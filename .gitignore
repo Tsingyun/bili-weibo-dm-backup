@@ -23,6 +23,13 @@
 # WebUI 自己的状态（上次抓取/导出时间等），本机运行痕迹，不入库
 /.webui/
 
+# ── 定时任务的运行日志（2026-10-13 补）──
+# 计划任务每跑一次就往里写 auto_YYYYMMDD_HHMMSS.log 和 auto_history.txt，
+# 和 /.webui/ 一个性质：本机运行痕迹，不该跟着代码走。
+# ⚠ 光靠下面那条 *.log 不够：auto_history.txt 不是 .log 结尾，
+#   会被当成未跟踪文件把整个 logs/ 目录顶出来（2026-10-13 实测）。
+/logs/
+
 # 索引快照（本机备份，由 scripts/snapshot.mjs 生成）
 /snapshots/
 

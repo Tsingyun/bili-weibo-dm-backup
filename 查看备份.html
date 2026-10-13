@@ -815,16 +815,29 @@ html[data-theme="dark"]{
    没有切换按钮 —— 看哪个站的备份就用哪个站的样子，少一个要多想一下的开关。
    取值不靠眼估，都是站方自己的一手产物：
 
-   【微博】以**新版 App 私信会话页**为准（2026-09 定稿）
-     · 微博 UDC《新版微博App聊天界面优化经验总结》原文要点：
-       我方气泡是**蓝**的（微信才是绿）；圆角 = 单行气泡高度的 1/4；
-       气泡角要平滑、与头像关联，不是尖锐三角；间距分两级（同侧连发 / 换人）。
-     · 官方定稿截图逐像素取色（工作区 _ref/wbim/u28.jpg 及其放大件）：
-       我方蓝 #3da7fb（mode #3ea8fc / #3da7fb）、对方纯白、聊天底 #ececec、
-       导航 #f5f5f5、正圆头像 ≈34pt、气泡与头像间距 10pt、输入栏 #f9f9f9。
-     · 会话页 chrome **不用橙**（橙属信息流品牌层）——
-       所以聊天区里一点橙都不放，橙只留在侧栏那一列。
-     · 侧栏这一列 App 里没有，仍取 pcweibochat（微博聊天 PC 网页版）：
+   【微博】以**网页版私信**（pcweibochat，api.weibo.com/chat）为准
+     · 2026-10-13 直接操控浏览器打开真实会话量取（一手证据在工作区 _ref/：
+       wb_bubble_zoom.png / wb_group.png / wc_app.c7a8f534.css / wc_app.48f8ddda.js）。
+       上一版照的是「新版 App 会话页」定稿截图（蓝气泡 #3da7fb + 白字、34pt 圆头像、
+       10px 圆角、逐条昵称+时间行）—— 那一套是**手机 App** 的长相，与网页版不符，已弃用。
+     · 气泡（.bubble_cont）：我方浅蓝 #e5f3fd、对方纯白，**两侧都**是 1px #e5e5e5 描边
+       + border-radius:5px + box-shadow:0 1px 1px rgba(0,0,0,.05)，max-width:390px；
+       文字 .puretext 是 14px/20px 的 #333 深字（不是白字压蓝）。
+     · 内边距在 .card1 上：11px 16px；头像 .avator 30px 正圆；
+       气泡与头像间距 = .bubble_cont 的 margin-left/right:11px；
+       消息行 .message-item{padding:8px 18px}。
+     · 气泡角 = .bubble_arrow：5px border 拼出的**直角小三角**（上+左/上+右边框上色），
+       贴在气泡外侧、距顶 15px —— 注意是「三角」不是旋转方块，也别给 .plain/.sys 挂。
+     · 昵称行**只有群聊才画**（.name.font12{#a3a7ae;padding-bottom:5px}，与头像右缘对齐）；
+       1:1 会话一条都没有。本项目采集端 is_include_group=0，只采 1:1 → 正常浏览不画昵称行。
+     · 时间**不逐条显示**，是居中的分隔条（p.time.tc.font12：12px、#a3a7ae、无底色、
+       margin:7px auto），且仅当与上一条消息**间隔 > 5 分钟**才出现
+       （一手 app.js isshowmsgtime: `e-r>3e5`，首条必出、created_at 为 0 不出）。
+       分隔条文案照一手 formatDate：今天 HH:mm / 昨天HH:mm / 前天 星期X HH:mm /
+       今年 MM-DD HH:mm / 更早 YYYY-MM-DD。
+     · 会话页 chrome **不用橙**（橙属信息流品牌层）—— 聊天区里一点橙都不放，
+       橙只留在侧栏那一列。
+     · 侧栏这一列网页版本来就有，仍取 pcweibochat 的一手值：
        .chatbox .msglist{width:320px;background:#33353a}         ← 深色会话列表
        .chatlist .sessionlist{height:80px;border-bottom:1px solid #2c2e31}
        .chatlist .sessionlist.active{background-color:#292b2e}  :hover{#3a3c42}
@@ -832,8 +845,6 @@ html[data-theme="dark"]{
        .chatlist .content-bottom .num{background:#ff8f2c}                 ← 未读=橙
        主色 #ff8200（该包里出现 24 次）；浅底 #f2f2f5（出现 45 次）
        灰阶 #2b333f / #55595e / #696e78 / #939393 / #a3a7ae / #d9d9d9
-       ⚠ 那个包里的「我方绿气泡 + 尖锐小三角 + 方头像」是**旧版**长相
-         （官方文档自己都把它和微信绿气泡并列着批评），已整套弃用。
 
    【B站】message.bilibili.com 的 message-pc 样式包
      :root{--brand_blue:#00aeec(--Lb5); --brand_blue_thin:#dff6fd(--Lb1);
@@ -855,12 +866,13 @@ html[data-theme="dark"]{
    两条纪律（不因为「要像原站」就破例）：
      · 颜色全部走 CSS 变量。侧栏、卡片、统计面板、灯箱、媒体墙会自动跟着换肤，
        不必逐个组件重写 —— 少写一遍就少漏一处。
-     · 原站对比度不够的地方**不照抄**：微博时间原站是极浅灰压 #ececec（≈1.6:1），
-       这里保留「居中细字、无底色」的形状、换成可读的 --muted-strong（实测 ≈4.4:1）；
+     · 原站对比度不够的地方**不照抄**：微博的时间/昵称原站是 #a3a7ae，压白底只有
+       2.4:1，这里保留「居中细字、无底色」的形状、换成可读的 --muted-strong；
        要人读的链接另取同色系深一档并实测。
-       如实照搬的只有两站的**招牌蓝气泡 + 白字**：微博 #3da7fb（2.59:1）、
-       B站 #00aeec（2.54:1）—— 那是这两个站自己的主色，改深了就不是它们了。
-       （原来还有「切回原版就好」这条退路，现在开关取消了，所以这两条在
+       微博气泡这次是「浅蓝底 + 深字」（#e5f3fd / #333 ≈ 11:1），本来就读得清，
+       所以**例外清单里只剩 B站 一条**：._MsgTextIsMe_ 的实心品牌蓝 #00aeec + 白字
+       （2.54:1）—— 那是 B站 自己的主色，改深了就不是它了。
+       （原来还有「切回原版就好」这条退路，现在开关取消了，所以这条在
           verify_skin.mjs 里是**写明的例外清单**，不是漏测。）
    ========================================================== */
 
@@ -902,20 +914,20 @@ html[data-skin="weibo"] .shead .sav{border-radius:50%}   /* 官方定稿：头�
 html[data-skin="weibo"] .stats,
 html[data-skin="bili"] .stats{color:var(--muted-strong)}
 
-/* ================= 微博皮肤（新版 App 私信会话页） ================= */
+/* ================= 微博皮肤（网页版私信 pcweibochat） ================= */
 /* 配色只在浅色下生效：深色主题上套这套浅色底会变成「深底压深字」。
    所以深色主题下只保留下面那一段**排版**，颜色仍用本工具自己的深色方案。 */
 html[data-skin="weibo"]:not([data-theme="dark"]){
-  --bg:#ececec;            /* 官方定稿实测：聊天区底色 */
+  --bg:#fff;              /* 一手 .chatbox{background:#fff}：聊天区就是白底 */
   --panel:#fff;
-  --text:#2b333f;          /* 一手灰阶深色端 */
-  --muted:#939393;         /* 一手灰阶 */
-  --muted-strong:#55595e;  /* 要人读的正文用这一档：#696e78 压 #ececec 只有 4.33:1，够不上 4.5 */
-  --line:#d9d9d9;          /* 一手灰阶 */
-  --peer:#fff;             /* 官方定稿：对方气泡=纯白 */
-  --peer-text:#1a1a1a;
-  --me:#3da7fb;            /* 官方定稿：我方=微博蓝（取色 mode #3ea8fc / #3da7fb） */
-  --me-text:#fff;          /* 招牌配色如实照搬（2.59:1）—— 例外清单见顶部纪律 */
+  --text:#2b333f;          /* 一手灰阶深色端（气泡里的正文另用 #333，见 --peer-text） */
+  --muted:#a3a7ae;         /* 一手 .name / .time 的灰 */
+  --muted-strong:#55595e;  /* 要人读的正文用这一档：#a3a7ae 压白底只有 2.4:1 */
+  --line:#e5e5e5;          /* 一手 .bubble_cont 的描边 */
+  --peer:#fff;             /* 一手 .bubble_cont.left{background:#fff} */
+  --peer-text:#333;        /* 一手 .puretext.c333：两侧气泡都是深字 */
+  --me:#e5f3fd;            /* 一手 .bubble_cont.right{background:#e5f3fd} */
+  --me-text:#333;          /* 一手：浅蓝底压深字，不是白字压蓝 */
   --accent:#ff8200;        /* 微博主色橙：只出现在侧栏那一列，聊天区 chrome 不用它 */
   --chip:#f2f2f5;          /* 一手：出现 45 次的主浅底 */
   --chip-on:#ff8f2c;       /* 一手：未读角标橙 */
@@ -943,47 +955,58 @@ html[data-skin="weibo"]:not([data-theme="dark"]) .sidebar .chip[aria-pressed="tr
   border-color:#ff8f2c;    /* 一手：选中态用橙色当指示（.line{background:#ff8f2c}） */
 }
 
-/* 聊天区排版：照**新版 App 定稿截图**（下面每条都对得上 _ref/wbim/u28.jpg） */
-html[data-skin="weibo"] .msg{gap:10px}      /* 气泡与头像 = 1 个单位，两边一样（官方定稿） */
+/* 聊天区排版：照**网页版私信**一手实测（2026-10-13 对 api.weibo.com/chat 量取，
+   显示规则依据同页 app.48f8ddda.js 的 isshowmsgtime / formatDate） */
+html[data-skin="weibo"] .msg{gap:11px;margin:8px 0}
+/* ↑ 一手 .message-item{padding:8px 18px}（行高节奏 = 8+8）＋ .bubble_cont{margin-left/right:11px} */
 html[data-skin="weibo"] .av,
-html[data-skin="weibo"] .av-fb{border-radius:50%;width:34px;height:34px}  /* 正圆 ≈34pt */
-html[data-skin="weibo"] .body{max-width:min(70%,330px)} /* 一手 .content max-width:330px */
+html[data-skin="weibo"] .av-fb{border-radius:50%;width:30px;height:30px}  /* 一手 .avator{30px 正圆} */
+html[data-skin="weibo"] .body{max-width:min(70%,390px)} /* 一手 .bubble_cont{max-width:390px} */
 html[data-skin="weibo"] .bubble{
-  border:0;border-radius:10px;padding:9px 13px;   /* 圆角 = 单行高度的 1/4（官方口径） */
-  font-size:16px;line-height:1.42;box-shadow:none;position:relative;
+  border:1px solid var(--line);border-radius:5px;padding:11px 16px; /* 一手 .card1{padding:11px 16px} */
+  font-size:14px;line-height:20px;                                  /* 一手 .puretext{14px/20px} */
+  box-shadow:0 1px 1px rgba(0,0,0,.05);                             /* 一手 .bubble_cont 的投影 */
+  width:fit-content;max-width:100%;position:relative;
 }
 /* ⚠ 这行不能省：基础样式里 `.msg.me .bubble`（3 个类 = 特异性 0,3,0）写死了
-   border-top-right-radius:5px / border-top-left-radius:14px，比上面那条
-   `html[data-skin=...] .bubble`（0,2,1）更高 —— 不显式压一次，我方气泡会变成
-   「左上 14 / 右上 5 / 下边 10」的混合圆角（测试抓出来的真 bug）。 */
-html[data-skin="weibo"] .msg.me .bubble{border-radius:10px}
-/* 气泡角 = **平滑小弧角**：把一个小方块转 45°、只把外角修圆，露在气泡外侧。
-   官方原文要的就是这个形状（「气泡角下弧线更加平滑、与头像关联」，
-   并明确否掉了尖锐指向型的气泡角）；旧版那种 border 三角已弃用。
+   border:0 / border-top-right-radius:5px / border-top-left-radius:14px，
+   比上面那条 `html[data-skin=...] .bubble`（0,2,1）更高 —— 不显式压一次，
+   我方气泡会变成「左上 14 / 右上 5 / 下边 5」的混合圆角而且还丢了描边。 */
+html[data-skin="weibo"] .msg.me .bubble{
+  border:1px solid var(--line);border-radius:5px;background:var(--me);color:var(--me-text);
+}
+/* 气泡角 = 一手 .bubble_arrow：5px border 拼出的**直角小三角**，贴在气泡外侧、
+   距气泡顶 15px、探出约 8px（一手 top:15px / right:3px，外层容器比气泡宽出那 11px 间距）。
+   .me 在右侧：上+左边框上色 → 直角在左上；.other 在左侧：上+右边框上色 → 直角在右上。
    ⚠ 只画在**有底**的气泡上：.plain / .sys 是透明无框的（background:transparent!important），
    给它们挂个实心角会凭空浮在那儿 —— 这条排除是踩过的真 bug，别删。 */
 html[data-skin="weibo"] .msg.me .bubble:not(.plain):not(.sys)::after,
 html[data-skin="weibo"] .msg:not(.me) .bubble:not(.plain):not(.sys)::after{
-  content:"";position:absolute;top:7px;width:14px;height:14px;
-  background:inherit;border-radius:3px;
+  content:"";position:absolute;top:15px;width:0;height:0;
+  border:5px solid transparent;pointer-events:none;
 }
 html[data-skin="weibo"] .msg.me .bubble:not(.plain):not(.sys)::after{
-  right:-5px;transform:rotate(45deg);border-top-right-radius:13px;
+  right:-8px;border-top-color:var(--me);border-left-color:var(--me);
 }
 html[data-skin="weibo"] .msg:not(.me) .bubble:not(.plain):not(.sys)::after{
-  left:-5px;transform:rotate(-45deg);border-top-left-radius:13px;
+  left:-8px;border-top-color:var(--peer);border-right-color:var(--peer);
 }
-/* 深色主题下 --me 是渐变：小角用的是 background:inherit，本来也能拿到底色，
-   但 14px 的方块里渐变会「从头重放」，接缝看得出来 —— 所以只藏我方这条。
-   对方那条走纯色 --peer，深色下照样成立。
-   选择器要带同样的 :not() 才压得住上面那条规则，别简化。 */
+/* 深色主题下 --me 是渐变：border-top-color 吃到非法值会退化成 currentColor，
+   小三角会以正文色画出来 —— 所以只藏我方这条。对方那条走纯色 --peer，深色下照样成立。 */
 html[data-theme="dark"][data-skin="weibo"] .msg.me .bubble:not(.plain):not(.sys)::after{display:none}
 /* 只有图 / 卡片的气泡（.plain）不能被上面的 padding 撑开（原规则没带 !important） */
 html[data-skin="weibo"] .bubble.plain{padding:0}
+/* 昵称行：一手**只有群聊**才画（.name.font12{#a3a7ae;padding-bottom:5px}）。
+   本项目采集端 is_include_group=0，只采 1:1 会话 → 正常浏览时这一行根本不出现；
+   搜索命中模式下会保留一条只放角标+时间的（那是本工具自己的功能，原站没有）。 */
 html[data-skin="weibo"] .meta{font-size:12px;padding:0 2px 3px;color:var(--muted-strong)}
-html[data-skin="weibo"] .imgs img{max-width:min(250px,100%)}
-/* 日期分隔条 = 官方定稿的「居中细字、无底色」（微信式胶囊是明确要避开的特征）；
-   原站灰度极浅（≈1.6:1），按纪律保形状换可读色。 */
+html[data-skin="weibo"] .imgs img{max-width:min(240px,100%)}   /* 一手 .card5 .img-mod{max-width:240px} */
+/* 时间分隔条 = 一手 p.time.tc.font12：居中、12px、**无底色**（原站 #a3a7ae 压白底只有
+   2.4:1，按纪律保形状换可读色）。间距照一手 .time{margin:7px auto}。
+   什么时候出现由 render() 按一手 isshowmsgtime 决定：与上一条间隔 > 5 分钟。 */
+html[data-skin="weibo"] .time{text-align:center;margin:7px 0;font-size:12px;color:var(--muted-strong)}
+/* 日期分隔条 = 本工具自己的「逻辑日」标记（05:00 分界，tooltip 里有说明），
+   形状照一手：居中细字、无底色、无横线（微信式胶囊是明确要避开的特征）。 */
 html[data-skin="weibo"] .day{justify-content:center;margin:7px 0}
 html[data-skin="weibo"] .day::before,
 html[data-skin="weibo"] .day::after{display:none}
@@ -1951,6 +1974,27 @@ function boot(srcKey){
     var d = new Date(t);
     return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   }
+  /* 微博网页版私信的时间分隔条文案，照一手 app.48f8ddda.js 的 formatDate 过滤器：
+       今天 → HH:mm；昨天 → 昨天HH:mm；前天 → 星期X HH:mm；
+       今年 → MM-DD HH:mm；更早 → YYYY-MM-DD。
+     （原站第三个分支只覆盖「前天」一整天 —— 那是它自己的写法，这里如实照搬，
+       不擅自扩成「本周」，否则对不上真实界面。） */
+  function wbTime(t){
+    var now = new Date(), d = new Date(t);
+    if(isNaN(d.getTime())) return '';
+    var hm = hhmm(t);
+    var today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    var y0 = today0 - 86400000, dby0 = y0 - 86400000;
+    var year0 = new Date(now.getFullYear(), 0, 1).getTime();
+    if(t >= today0) return hm;
+    if(t >= y0) return '昨天' + hm;
+    if(t >= dby0) return '星期' + '日一二三四五六'.charAt(d.getDay()) + ' ' + hm;
+    if(t >= year0) return String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + hm;
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  /* 微博网页版私信的时间分隔条**什么时候出现**，照一手 isshowmsgtime：
+       首条必出；与上一条间隔 > 5 分钟（3e5 ms）才出；created_at 为 0 的不出。 */
+  var WB_TIME_GAP = 300000;
   function avatar(m){
     var src = m.from === 'me' ? META.self_avatar_local : META.peer_avatar_local;
     if(!src) src = m.from === 'me' ? META.self_avatar : META.peer_avatar;
@@ -2150,14 +2194,27 @@ function boot(srcKey){
                (opt.inctx ? ' ctx' : '') +
                (isExpand ? ' hit' : '') +
                (isCtxHit ? ' hitsoft' : '');
+    /* 昵称 + 时间行要不要画，按皮肤分开：
+       · B站：一手 message-pc 就是逐条画（._Msg__SenderName + ._Msg__Time），照画。
+       · 微博：一手网页版**只有群聊才画昵称**（.name.font12），1:1 一条都没有；
+         时间更不逐条画，而是居中的分隔条（>5 分钟才出，见 render()）。
+         本项目采集端 is_include_group=0，只采 1:1 → 正常浏览时这一行整个不出现。
+         搜索命中模式下保留一条只放「时间 + 角标」的：角标是本工具自己的功能，
+         时间则是稀疏的上下文列表里唯一的定位依据（分隔条规则在那儿不够用）。 */
+    var badgeHtml = (isExpand ? '<span class="hitbadge" title="这是你搜索命中的那条消息">命中</span>' : '') +
+                    (isCtxHit ? '<span title="这条也是搜索结果，只是不在你展开的那条旁边">· 命中</span>' : '');
+    var metaHtml = '';
+    if(SKIN.eff === 'weibo'){
+      if(badgeHtml) metaHtml = '<div class="meta">' +
+        (m.ts ? '<span title="' + esc(fmt(m.ts)) + '">' + hhmm(m.ts) + '</span>' : '') + badgeHtml + '</div>';
+    }else{
+      metaHtml = '<div class="meta"><span>' + esc(isMe ? (META.self_name || '我') : (META.peer_name || 'TA')) + '</span>' +
+        '<span title="' + esc(fmt(m.ts)) + '">' + hhmm(m.ts) + '</span>' + badgeHtml + '</div>';
+    }
     return '<div class="' + wrap + '"' +
       (m._ai == null ? '' : ' data-ai="' + m._ai + '"') +
       (idx == null ? '' : ' data-i="' + idx + '"') + '>' + avatar(m) +
-      '<div class="body"><div class="meta"><span>' + esc(isMe ? (META.self_name || '我') : (META.peer_name || 'TA')) + '</span>' +
-      '<span title="' + esc(fmt(m.ts)) + '">' + hhmm(m.ts) + '</span>' +
-      (isExpand ? '<span class="hitbadge" title="这是你搜索命中的那条消息">命中</span>' : '') +
-      (isCtxHit ? '<span title="这条也是搜索结果，只是不在你展开的那条旁边">· 命中</span>' : '') +
-      '</div>' +
+      '<div class="body">' + metaHtml +
       '<div class="' + cls + '"' +
         (isHidMsg ? ' data-unhide="' + esc(mId(m)) + '" title="点击恢复这条消息"' : '') + '>' +
         inner + '</div>' +
@@ -2324,7 +2381,7 @@ function boot(srcKey){
     var start = Math.max(0, st.win), end = Math.min(list.length, start + CHUNK);
     var html = head;
     if(start > 0) html += '<div class="more"><button id="moreTop">↑ 加载更早的 '+start.toLocaleString()+' 条</button></div>';
-    var items = buildItems(start, end), last = null;
+    var items = buildItems(start, end), last = null, lastTs = 0;
     for(var j=0;j<items.length;j++){
       var it = items[j];
       if(it.k === 'bar'){ html += ctxBarHtml(it); continue; }
@@ -2335,7 +2392,14 @@ function boot(srcKey){
         html += '<div class="day"' + (m.ts ? ' data-m="' + dk.slice(0,7) + '" title="' + esc(dayTip(dk)) + '"' : '') +
                 '><span>' + (m.ts?dayLabel(m.ts):'时间未知') + '</span></div>';
         last = dk;
+        lastTs = 0;   // 换了一逻辑日 → 这一天的首条必出时间分隔条（照一手「首条必出」）
       }
+      /* 微博皮肤：一手网页版把时间放在**居中的分隔条**里，且仅当与上一条间隔
+         > 5 分钟才出现（app.js isshowmsgtime）。B站 是一手逐条显示的，不走这条。 */
+      if(SKIN.eff === 'weibo' && m.ts && (!lastTs || m.ts - lastTs > WB_TIME_GAP)){
+        html += '<div class="time" title="' + esc(fmt(m.ts)) + '">' + esc(wbTime(m.ts)) + '</div>';
+      }
+      if(m.ts) lastTs = m.ts;
       html += renderBubble(m, it.li, it);
     }
     if(end < list.length) html += '<div class="more"><button id="moreBot">↓ 还有 '+(list.length-end).toLocaleString()+' 条</button></div>';
@@ -2752,6 +2816,7 @@ function boot(srcKey){
     SKIN.eff = eff;
     document.documentElement.setAttribute('data-skin', eff);
     SHOT_PAL = null;   // 取色缓存必须跟着皮肤失效，否则导出图还是上一套配色
+    shotSyncMetrics(); // 度量常量同样是 CSS 的镜子（头像/间距/内边距/圆角/有没有昵称行）
   }
   /* 仿站会话头（渲染在 #chat 最前面，见 render）。
      皮肤按数据源自动，所以这一块**总是**会渲染。
@@ -3295,18 +3360,73 @@ function boot(srcKey){
   /* 逻辑画布宽度。和页面的 main{max-width:1000px} 不是一回事：
      这里刻意窄一点（760），长截图单张能装更多条，读起来也更像聊天记录。 */
   var SHOT_W = 760, SHOT_PAD = 26;
+  /* 皮肤度量表。⚠ 这些常量是 CSS 的**镜子**（铁律 27）：改了 .msg/.av/.body/.bubble
+     就必须回来改这里，否则导出图和屏幕上不是一张脸。applySkin() 会按数据源重算。 */
   var SHOT_AV = 34, SHOT_AVGAP = 9, SHOT_MSG_MY = 11;   // 与 .msg{margin:11px 0} 同口径
   var SHOT_BODY = Math.min(Math.round((SHOT_W - SHOT_PAD * 2) * 0.70), 492);  // 与 .body max-width 同口径
   var SHOT_BPAD_X = 12, SHOT_BPAD_Y = 8;                                     // 与 .bubble padding 同口径
   var SHOT_LH = 1.6;                                                         // body line-height
   var SHOT_FS = 14, SHOT_FS_META = 11, SHOT_FS_SUB = 12.5,
       SHOT_FS_CARDH = 12, SHOT_FS_TAG = 11;
+  /* 皮肤差异项（默认 = 原版/B站口径，微博由 shotSyncMetrics() 覆写）：
+     · SHOT_RADIUS  null=分侧圆角 / 数字=四角同半径（微博 5px）
+     · SHOT_BORDER  我方气泡是否也描 1px 边（微博两边都有边）
+     · SHOT_TAIL    是否画气泡尾（微博 5px 边框直角三角）
+     · SHOT_META    是否画「昵称+时间」行（微博 1:1 没有这一行）
+     · SHOT_TIME_GAP  >0 = 按一手 isshowmsgtime 插居中时间分隔条（微博 5 分钟）
+     · SHOT_DAY_PILL 日期分隔条是否画「横线+药丸」（微博/B站都是居中细字） */
+  var SHOT_RADIUS = null, SHOT_BORDER = false, SHOT_TAIL = false,
+      SHOT_META = true, SHOT_TIME_GAP = 0, SHOT_DAY_PILL = true, SHOT_DAY_H = 61;
   var SHOT_HEAD_H = 58, SHOT_FOOT_H = 34;
+  /* 按皮肤重算度量表（applySkin 调用；深/浅主题只影响取色，不影响度量）。
+     三套皮肤的数值全部抄自各自那段 CSS，改 CSS 必须回来改这里（铁律 27）。 */
+  function shotSyncMetrics(){
+    var eff = (typeof SKIN !== 'undefined' && SKIN.eff) || 'weibo';
+    if(eff === 'weibo'){
+      SHOT_AV = 30; SHOT_AVGAP = 11; SHOT_MSG_MY = 8;              // .avator 30px / .bubble_cont margin 11px / .message-item 8px
+      SHOT_BODY = Math.min(Math.round((SHOT_W - SHOT_PAD * 2) * 0.70), 390);  // .bubble_cont{max-width:390px}
+      SHOT_BPAD_X = 16; SHOT_BPAD_Y = 11;                          // .card1{padding:11px 16px}
+      SHOT_LH = 20 / 14;                                           // .puretext 14px/20px
+      SHOT_FS_META = 12;                                           // .meta / p.time 12px
+      SHOT_RADIUS = 5; SHOT_BORDER = true; SHOT_TAIL = true;       // 圆角 5px、双边 1px #e5e5e5、5px 直角三角尾
+      SHOT_META = false; SHOT_TIME_GAP = 300000;                   // 1:1 无昵称行；间隔 >5 分钟才出时间条
+      SHOT_DAY_PILL = false; SHOT_DAY_H = 7 + 19 + 7;              // .day{margin:7px 0} + 12px 细字（行高 1.6）
+      SHOT_IMG_MAX = 240;                                          // .imgs img{max-width:min(240px,100%)}
+    }else if(eff === 'bili'){
+      SHOT_AV = 30; SHOT_AVGAP = 10; SHOT_MSG_MY = 11;             // ._Msg__Avatar 30px / margin-right:10px
+      SHOT_BODY = Math.min(Math.round((SHOT_W - SHOT_PAD * 2) * 0.70), 398);  // ._ParagraphText_ max-width:398px
+      SHOT_BPAD_X = 16; SHOT_BPAD_Y = 8;                           // 一手 padding:8px 16px
+      SHOT_LH = 1.5;                                               // 一手 line-height:1.5
+      SHOT_FS_META = 13;                                           // 一手 ._Msg__SenderName 13px
+      SHOT_RADIUS = [[0, 16, 16, 16], [16, 0, 16, 16]];           // 一手：对方左上切角、我方右上切角（[peer, me]）
+      SHOT_BORDER = false; SHOT_TAIL = false;
+      SHOT_META = true; SHOT_TIME_GAP = 0;
+      SHOT_DAY_PILL = false; SHOT_DAY_H = 16 + 19 + 16;            // .day{padding:16px 0}
+      SHOT_IMG_MAX = 300;                                          // .imgs img{max-width:min(300px,100%)}
+    }else{
+      SHOT_AV = 34; SHOT_AVGAP = 9; SHOT_MSG_MY = 11;
+      SHOT_BODY = Math.min(Math.round((SHOT_W - SHOT_PAD * 2) * 0.70), 492);
+      SHOT_BPAD_X = 12; SHOT_BPAD_Y = 8; SHOT_LH = 1.6; SHOT_FS_META = 11;
+      SHOT_RADIUS = null; SHOT_BORDER = false; SHOT_TAIL = false;
+      SHOT_META = true; SHOT_TIME_GAP = 0;
+      SHOT_DAY_PILL = true; SHOT_DAY_H = 22 + 25 + 14;             // 上距 22 + 药丸 25 + 下距 14
+      SHOT_IMG_MAX = 240;
+    }
+  }
+  /* ⚠⚠ 顺序陷阱（踩过两次，别再删这次调用）：
+     applySkin() 在 boot() 体很前面就调一次（换源时也调），而本函数上面那些
+     `var SHOT_AV = 34 …` 的**赋值**在本文件更靠后的位置才执行 —— 函数体是按
+     书写顺序跑的，所以 applySkin 里那次同步会被随后的常量初始化覆盖回默认值。
+     甚至连 `var SHOT_IMG_MAX = 240`（在下面几行）都会把 B站 的 300 冲掉。
+     → 真正的兜底是「常量全部落地后再同步一次」，见 SHOT_IMG_MAX 声明之后那行。 */
   /* 单页像素上限。Chrome 单边上限 65535、总面积约 2.6 亿像素；
      这里取保守值，既不踩浏览器限制，又能让一张图装下足够多消息。
      （Safari 的画布面积上限低得多 —— 本项目只承诺 Edge / Chrome。） */
   var SHOT_PAGE_PX_H = 16000, SHOT_PAGE_PX_AREA = 40e6;
   var SHOT_IMG_MAX = 240, SHOT_IMG_MAX_EMOJI = 130;
+  /* 常量全部落地后再同步一次皮肤度量（顺序陷阱详见 shotSyncMetrics 上方注释）。
+     少这一行 → B站 皮肤下 imgMax 会停在默认 240，截图对表就红。 */
+  shotSyncMetrics();
   var SHOT_BOX = '📦';
 
   var SHOT_PAL = null;
@@ -3450,7 +3570,13 @@ function boot(srcKey){
   function shotDayBlock(dk, label){
     var pill = ' ' + label + ' ';
     var w = shotMeasure(pill, 12) + 20;
-    return { kind: 'day', dk: dk, label: label, pillW: w, h: 22 + 25 + 14 };
+    return { kind: 'day', dk: dk, label: label, pillW: w, h: SHOT_DAY_H };
+  }
+
+  /* 一手 isshowmsgtime：与上一条间隔 > 5 分钟才出（首条必出）。
+     形状照一手 p.time.tc.font12：居中、12px、无底色、margin:7px auto。 */
+  function shotTimeBlock(t){
+    return { kind: 'time', t: t, label: wbTime(t), h: 7 + 19 + 7 };
   }
 
   function shotBubbleWidth(m, txt, hasCard){
@@ -3463,7 +3589,9 @@ function boot(srcKey){
       for(var i = 0; i < lines.length; i++) if(lines[i].w > tw) tw = lines[i].w;
     }
     var iw = shotImgRowWidth(m);
-    var mw = shotMeasure(shotName(m) + ' ' + hhmm(m.ts), SHOT_FS_META) + 14;
+    /* 名字行会把气泡撑宽（.body 默认 align-items:stretch，铁律 30）——
+       没有这一行的皮肤（微博 1:1）不参与取 max，否则两字消息也会被撑到 meta 宽。 */
+    var mw = SHOT_META ? shotMeasure(shotName(m) + ' ' + hhmm(m.ts), SHOT_FS_META) + 14 : 0;
     var inner = Math.max(tw, iw, Math.min(mw, maxInner), 24);
     return Math.max(Math.min(inner + (SHOT_BPAD_X + 1) * 2, SHOT_BODY), 96);
   }
@@ -3701,8 +3829,9 @@ function boot(srcKey){
 
   // 把气泡内的图元收集成一个块（顺带算头像、名字行与整块高度）
   function shotPack(m, me, ops, bubbleH, bubbleW, opt){
-    var metaH = Math.round(SHOT_FS_META * SHOT_LH) + 1;
-    var bodyH = metaH + 4 + bubbleH;
+    // 没有昵称行的皮肤（微博 1:1）：metaH = 0，气泡与头像顶对齐
+    var metaH = SHOT_META ? Math.round(SHOT_FS_META * SHOT_LH) + 1 : 0;
+    var bodyH = metaH ? metaH + 4 + bubbleH : bubbleH;
     var h = Math.max(SHOT_AV, bodyH) + SHOT_MSG_MY * 2;
     return {
       kind: 'msg', m: m, me: me, meta: { name: shotName(m), time: hhmm(m.ts) },
@@ -3792,19 +3921,28 @@ function boot(srcKey){
 
   function shotDrawDay(g, b, y){
     var P = shotPalette();
-    var cy = y + 22 + 12;
-    g.strokeStyle = P.line; g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(SHOT_PAD, cy + .5); g.lineTo(SHOT_W - SHOT_PAD, cy + .5); g.stroke();
-    var pw = b.pillW, px = (SHOT_W - pw) / 2, ph = 25;
-    g.fillStyle = P.panel;
-    shotRR(g, px, cy - ph / 2, pw, ph, 999);
-    g.fill();
-    g.strokeStyle = P.line; g.stroke();
     g.fillStyle = P.muted2;
     g.font = shotFont(12);
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(b.label, SHOT_W / 2, cy + 1);
+    if(SHOT_DAY_PILL){
+      // 原版：两条横线中间一个药丸（.day::before/::after + .day span）
+      var cy = y + 22 + 12;
+      g.strokeStyle = P.line; g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(SHOT_PAD, cy + .5); g.lineTo(SHOT_W - SHOT_PAD, cy + .5); g.stroke();
+      var pw = b.pillW, px = (SHOT_W - pw) / 2, ph = 25;
+      g.fillStyle = P.panel;
+      shotRR(g, px, cy - ph / 2, pw, ph, 999);
+      g.fill();
+      g.strokeStyle = P.line; g.stroke();
+      g.fillStyle = P.muted2;
+      g.fillText(b.label, SHOT_W / 2, cy + 1);
+    }else{
+      // 微博 / B站：一手都是**居中细字**，没有横线也没有药丸
+      //   （微博 .day{margin:7px 0}；B站 .day{padding:16px 0}；行高继承 body 1.6 → 19.2）
+      var pad = (b.h - 19.2) / 2;
+      g.fillText(b.label, SHOT_W / 2, y + pad + 9.6);
+    }
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
     /* ⚠ 这个 return 不能少：shotDrawBlock 是「画完返回下一个 y」的约定，
        漏掉它就变成 undefined，后面所有块都画在 NaN 上 ——
@@ -3814,8 +3952,20 @@ function boot(srcKey){
     return y + b.h;
   }
 
+  function shotDrawTime(g, b, y){
+    var P = shotPalette();
+    g.fillStyle = P.muted2;
+    g.font = shotFont(12);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    var pad = (b.h - 19.2) / 2;   // margin:7px 0 + 12px 细字（行高 1.6）
+    g.fillText(b.label, SHOT_W / 2, y + pad + 9.6);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    return y + b.h;   // 同上：少了这个 return，后面全画在 NaN 上
+  }
+
   function shotDrawBlock(g, b, y){
     if(b.kind === 'day') return shotDrawDay(g, b, y);
+    if(b.kind === 'time') return shotDrawTime(g, b, y);
     var P = shotPalette();
     var x0 = SHOT_PAD, right = SHOT_W - SHOT_PAD;
     // 和页面同一套规则：头像贴各自那一侧，气泡紧贴头像（.msg.me 靠右）。
@@ -3842,30 +3992,32 @@ function boot(srcKey){
       shotAvatarFallback(g, b, avX, avY, P);
     }
 
-    // 名字 + 时间
-    g.font = shotFont(SHOT_FS_META);
-    g.fillStyle = P.muted;
-    g.textBaseline = 'middle';
-    if(b.me){
-      var t = b.meta.time, n = b.meta.name;
-      g.textAlign = 'right';
-      g.fillText(t, bx + b.bubbleW - 4, byTop + b.metaH / 2);
-      g.fillText(n, bx + b.bubbleW - 4 - shotMeasure(t, SHOT_FS_META) - 7, byTop + b.metaH / 2);
-    }else{
-      g.textAlign = 'left';
-      g.fillText(b.meta.name, bx + 4, byTop + b.metaH / 2);
-      g.fillText(b.meta.time, bx + 4 + shotMeasure(b.meta.name, SHOT_FS_META) + 7, byTop + b.metaH / 2);
+    // 名字 + 时间（微博 1:1 没有这一行，一手只有群聊才画 .name.font12）
+    if(SHOT_META){
+      g.font = shotFont(SHOT_FS_META);
+      g.fillStyle = P.muted;
+      g.textBaseline = 'middle';
+      if(b.me){
+        var t = b.meta.time, n = b.meta.name;
+        g.textAlign = 'right';
+        g.fillText(t, bx + b.bubbleW - 4, byTop + b.metaH / 2);
+        g.fillText(n, bx + b.bubbleW - 4 - shotMeasure(t, SHOT_FS_META) - 7, byTop + b.metaH / 2);
+      }else{
+        g.textAlign = 'left';
+        g.fillText(b.meta.name, bx + 4, byTop + b.metaH / 2);
+        g.fillText(b.meta.time, bx + 4 + shotMeasure(b.meta.name, SHOT_FS_META) + 7, byTop + b.metaH / 2);
+      }
+      g.textAlign = 'left'; g.textBaseline = 'alphabetic';
     }
-    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 
     // 气泡
-    var bubTop = byTop + b.metaH + 4;
-    var radius = b.me ? [14, 5, 14, 14] : [5, 14, 14, 14];
+    var bubTop = byTop + b.metaH + (SHOT_META ? 4 : 0);
+    var radius = shotRadiusFor(b.me);
     if(b.sys){
       g.save();
       g.setLineDash([4, 4]);
       g.strokeStyle = P.line;
-      shotRR(g, bx, bubTop, b.bubbleW, b.bubbleH, 14); g.stroke();
+      shotRR(g, bx, bubTop, b.bubbleW, b.bubbleH, radius); g.stroke();
       g.restore();
     }else if(!b.plain){
       if(b.me){
@@ -3877,9 +4029,12 @@ function boot(srcKey){
       }
       shotRR(g, bx + .5, bubTop + .5, b.bubbleW - 1, b.bubbleH - 1, radius);
       g.fill();
-      g.strokeStyle = b.me ? 'rgba(255,255,255,.001)' : P.line;
+      // 我方气泡在原版里不描边（渐变底自带轮廓）；微博两边都是 1px #e5e5e5
+      g.strokeStyle = b.me ? (SHOT_BORDER ? P.line : 'rgba(255,255,255,.001)') : P.line;
       g.lineWidth = 1;
-      if(!b.me) g.stroke();
+      if(!b.me || SHOT_BORDER) g.stroke();
+      // 气泡尾：一手 .bubble_arrow = 5px 边框直角三角（不是旋转方块）
+      if(SHOT_TAIL) shotTail(g, b, bx, bubTop, P);
     }
 
     // 气泡内图元
@@ -3887,6 +4042,36 @@ function boot(srcKey){
     for(var i = 0; i < b.ops.length; i++) shotOp(g, b.ops[i], ox, oy, b, P);
 
     return y + b.h;
+  }
+
+  /* 圆角按皮肤解析：null = 原版分侧（我方右上小角）/ 数字 = 四角同半径（微博 5px）
+     / [peer, me] 两组 = B站 一手那套切角。 */
+  function shotRadiusFor(me){
+    var r = SHOT_RADIUS;
+    if(r == null) return me ? [14, 5, 14, 14] : [5, 14, 14, 14];
+    if(typeof r === 'number') return r;
+    return r[me ? 1 : 0];
+  }
+
+  /* 微博网页版气泡尾（.bubble_arrow）：border:5px solid transparent 只留两条边
+     色 → 一个直角压在气泡边上、尖端朝外 5px 的三角。CSS 里盒子横跨
+     [气泡边-2, 气泡边+8]、top:15px，这里按同一几何画：
+       我方（尾在右）：竖直边贴在气泡右边内侧 2px，尖端向右探出
+       对方（尾在左）：竖直边贴在气泡左边内侧 2px，尖端向左探出
+     颜色 = 气泡底色（盖住那 1px 描边，和原站一样）。 */
+  function shotTail(g, b, bx, bubTop, P){
+    var top = bubTop + 15, mid = top + 5;
+    g.beginPath();
+    if(b.me){
+      var ex = bx + b.bubbleW;
+      g.moveTo(ex - 2, top); g.lineTo(ex - 2, top + 10); g.lineTo(ex + 3, mid);
+    }else{
+      var sx = bx;
+      g.moveTo(sx + 2, top); g.lineTo(sx + 2, top + 10); g.lineTo(sx - 3, mid);
+    }
+    g.closePath();
+    g.fillStyle = b.me ? P.meA : P.peer;
+    g.fill();
   }
 
   function shotAvatarFallback(g, b, x, y, P){
@@ -4331,12 +4516,18 @@ function boot(srcKey){
     return shotBuildBlocks(messages);
   }
 
-  // 顺序地把选中消息变成「日期分隔条 + 消息块」的清单
+  // 顺序地把选中消息变成「日期分隔条 + 时间分隔条 + 消息块」的清单
+  // 时间条的判定与 render() 逐字同口径：换逻辑日重置 lastTs（当天首条必出）、
+  // 与上一条间隔 > SHOT_TIME_GAP 才出（微博 = 一手 isshowmsgtime 的 5 分钟）。
   function shotBuildBlocks(messages){
-    var blocks = [], last = null;
+    var blocks = [], last = null, lastTs = 0;
     messages.forEach(function(m){
       var dk = m.ts ? dayKey(m.ts) : 'x';
-      if(dk !== last && m.ts){ blocks.push(shotDayBlock(dk, dayLabel(m.ts))); last = dk; }
+      if(dk !== last && m.ts){ blocks.push(shotDayBlock(dk, dayLabel(m.ts))); last = dk; lastTs = 0; }
+      if(SHOT_TIME_GAP && m.ts && (!lastTs || m.ts - lastTs > SHOT_TIME_GAP)){
+        blocks.push(shotTimeBlock(m.ts));
+      }
+      if(m.ts) lastTs = m.ts;
       blocks.push(shotBuildMsg(m));
     });
     return blocks;
@@ -4370,9 +4561,22 @@ function boot(srcKey){
         messages.length + ' 条 · ' + range + ' · ' + pages.length + ' 张 · ' + SHOT.scale + '×';
 
       /* 只读快照：给回归测试断言「分了几页、每页几条」用，也方便排查问题。
-         不参与任何渲染分支 —— 拿掉它页面行为完全一样。 */
+         不参与任何渲染分支 —— 拿掉它页面行为完全一样。
+         metrics / kinds / timeLabels 是 2026-10-13 微博网页版改版后加的：
+         度量常量是 CSS 的镜子（铁律 27），回归要能直接对表；
+         时间分隔条的条数与文案要能对「一手 isshowmsgtime」独立复算。 */
       window.__shotStats = {
         msgs: messages.length, pages: pages.length, scale: SHOT.scale, noImg: SHOT.noImg,
+        metrics: {
+          skin: SKIN.eff, av: SHOT_AV, avGap: SHOT_AVGAP, msgMy: SHOT_MSG_MY,
+          bpadX: SHOT_BPAD_X, bpadY: SHOT_BPAD_Y, body: SHOT_BODY, lh: SHOT_LH,
+          fs: SHOT_FS, fsMeta: SHOT_FS_META, radius: SHOT_RADIUS, border: SHOT_BORDER,
+          tail: SHOT_TAIL, meta: SHOT_META, timeGap: SHOT_TIME_GAP,
+          dayPill: SHOT_DAY_PILL, dayH: SHOT_DAY_H, imgMax: SHOT_IMG_MAX,
+        },
+        kinds: blocks.map(function(b){ return b.kind; }),
+        timeLabels: blocks.filter(function(b){ return b.kind === 'time'; })
+                          .map(function(b){ return b.label; }),
         perPage: pages.map(function(pg){
           var n = 0;
           pg.blocks.forEach(function(b){ if(b.kind === 'msg') n++; });

@@ -4,10 +4,15 @@
  * 这个功能的卖点就是「看起来像原站」，所以断言不能只写「按钮点了有反应」——
  * 必须把**真实计算样式**量出来，跟一手前端产物里的规格逐条对上：
  *
- *   微博 —— 新版 App 私信会话页（2026-09 定稿，官方 UDC 文章 + 定稿截图取色）：
- *     .self 气泡是**蓝**的 #3da7fb + 白字（微信才是绿；旧版那套绿气泡已弃用）
- *     对方气泡纯白；圆角 = 单行高度的 1/4（10px）；气泡角是平滑小弧角（旋转圆角方块）
- *     头像正圆 34px、气泡与头像间距 10px；聊天底 #ececec；日期分隔条居中细字无底色
+ *   微博 —— **网页版私信** api.weibo.com/chat（2026-10-13 一手实测；更早的
+ *     「App 会话页 #3da7fb」与「pcweibochat 绿气泡」两代规格已弃用）：
+ *     .bubble_cont 我方 #e5f3fd / 对方 #fff，**两侧都** 1px #e5e5e5、圆角 5px、
+ *       投影 0 1px 1px rgba(0,0,0,.05)、max-width 390px、width:fit-content
+ *     .card1{padding:11px 16px}；.puretext{14px/20px;color:#333}（两侧都是深字）
+ *     .avator{30px 正圆}；.bubble_cont{margin-left/right:11px}；.message-item{padding:8px 0}
+ *     .bubble_arrow = 5px 边框直角三角（不是旋转方块），top:15px
+ *     昵称行**只有群聊才有**（.name.font12）；本项目 is_include_group=0 → 只采 1:1
+ *     时间分隔条 = app.js isshowmsgtime（间隔 > 5 分钟 / 逻辑日首条必出）+ formatDate 五档
  *     侧栏那一列仍取 pcweibochat：.chatbox .msglist{background:#33353a} 等
  *   B站 message.bilibili.com 的 message-pc 样式包：
  *     ._MsgTextIsMe_{background:#00aeec;color:#fff;border-radius:16px 0 16px 16px}
@@ -16,11 +21,13 @@
  *     --bg3:#f1f2f3  --text1:#18191c
  *
  * 另外四件容易被漏掉的事，这里都单独守：
- *   · 对比度用 WCAG 公式**算**出来（不是看颜色值顺眼）。两站的招牌蓝气泡 + 白字
- *     是**写明的例外清单**（微博 2.59:1 / B站 2.54:1），其余一律要过 4.5。
+ *   · 对比度用 WCAG 公式**算**出来（不是看颜色值顺眼）。招牌蓝气泡 + 白字
+ *     只有 **B站 #00aeec（2.54:1）** 这一条写明的例外；微博网页版是 #333 压 #e5f3fd
+ *     （≈11:1），不再享受例外。
  *   · **气泡宽度**：短消息（两个字）不许被 .meta 撑成四个字的宽 —— 见第 11 节。
  *   · 皮肤恒等于数据源：`data-skin` 永远是 weibo / bili，不存在第三种；切换按钮已删。
  *   · 会话头不是 .msg，绝不能混进多选与高清截图。
+ *   · 高清导出的度量常量是 CSS 的**镜子**（铁律 27）：换皮肤后 SHOT_* 必须跟着换 —— 见第 9 节。
  *
  * 跑法：
  *   NODE_PATH=<node workspace>/node_modules node scripts/_explore/verify_skin.mjs
@@ -55,6 +62,49 @@ const expectSkin = key => (/bili|b站|哔哩/i.test(key) ? 'bili' : 'weibo');
 /* 找一对「有正文」的我方 / 对方气泡，供量样式用 */
 const ME_BUB = '.msg.me .bubble:not(.plain):not(.sys)';
 const PEER_BUB = '.msg:not(.me) .bubble:not(.plain):not(.sys)';
+
+/* 微博源的消息清单：第 3 节核对「时间分隔条什么时候出现」要用真实时间戳独立复算。
+   ⚠ 只读 ts，不打印任何正文 / 昵称。 */
+const WEIBO_DIR = (dirOf(SRC_KEYS.find(k => expectSkin(k) === 'weibo') || SRC_KEYS[0]) || 'data')
+  .replace(/\\/g, '/').replace(/\/$/, '');
+const WEIBO_MSGS = JSON.parse(fs.readFileSync(path.join(ROOT, WEIBO_DIR, 'messages.json'), 'utf8'));
+const TS_MAP = {};
+WEIBO_MSGS.forEach((m, i) => { if (m && m.ts) TS_MAP[i] = m.ts; });
+
+/* 一手 formatDate 的独立复刻（页面里是 wbTime()，这里照同一条规则重写一遍，
+   故意不 import 页面代码 —— 两边都按同一份规格实现，互相对照才有意义）：
+   今天 HH:mm / 昨天HH:mm / 前天 星期X HH:mm / 今年 MM-DD HH:mm / 更早 YYYY-MM-DD HH:mm */
+const DAY_CUT = 5 * 60 * 60 * 1000;          // 逻辑日分界：凌晨 5 点（与页面 dayDate 同规则）
+const dkey = t => { const d = new Date(t - DAY_CUT);
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
+function wbTimeExpect(t) {
+  const d = new Date(t);
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  const now = new Date();
+  const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const y0 = today0 - 86400000, dby0 = y0 - 86400000;
+  const year0 = new Date(now.getFullYear(), 0, 1).getTime();
+  if (t >= today0) return hm;
+  if (t >= y0) return '昨天' + hm;
+  if (t >= dby0) return '星期' + '日一二三四五六'.charAt(d.getDay()) + ' ' + hm;
+  if (t >= year0) return String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0') + ' ' + hm;
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0');
+}
+/* 一手 isshowmsgtime：created_at==0 不显示；每个逻辑日首条必出；与上一条间隔 > 5 分钟才出 */
+function expectTimeDividers(seq) {
+  const out = [];
+  let last = 0, lastDay = null;
+  for (const t of seq) {
+    if (!t) continue;
+    const dk = dkey(t);
+    if (dk !== lastDay) { lastDay = dk; last = 0; }
+    if (!last || t - last > 300000) out.push(t);
+    last = t;
+  }
+  return out;
+}
 
 /* ---------- 本地静态服务 ---------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -220,57 +270,91 @@ head('=== 2. 仿站会话头（含「本地备份」标记）===');
 }
 
 /* ============================================================
-   3. 微博皮肤：逐条对上一手规格
+   3. 微博皮肤：逐条对上一手规格（**网页版私信** api.weibo.com/chat）
+   ------------------------------------------------------------
+   2026-10-13 重新取证：用户参照的一直是网页版私信，而这一节原来钉的是
+   「微博 App 会话页」（#3da7fb + 白字 / 10px 圆角 / 34px 头像 / 旋转方块尾），
+   更早一代还是 pcweibochat 绿气泡 —— 两套都已弃用，全部换成网页版一手实测值。
+   证据在工作区根 `_ref/`（不在仓库里）：wb_measure*.json / wc_app.c7a8f534.css /
+   wb_bubble_crop.png；行为规则读自线上 app.48f8ddda.js 的 isshowmsgtime / formatDate。
    ============================================================ */
-head('=== 3. 微博皮肤（照新版 App 定稿逐条对）===');
+head('=== 3. 微博皮肤（照网页版私信一手实测逐条对）===');
 {
   await goSkin('weibo');
   await page.waitForTimeout(150);
 
   const me = await css(page, ME_BUB, ['backgroundColor', 'color', 'borderRadius', 'paddingTop',
-    'paddingLeft', 'fontSize', 'borderTopWidth']);
-  ok('我方气泡底色 = #3da7fb（官方定稿取色 mode #3ea8fc/#3da7fb；绿色是微信的/旧版的）',
-    me && me.backgroundColor === 'rgb(61, 167, 251)', me && me.backgroundColor);
-  ok('我方气泡文字 = 白色（官方定稿：白字压微博蓝）',
-    me && me.color === 'rgb(255, 255, 255)', me && me.color);
-  ok('我方气泡圆角 = 10px（官方口径：圆角 = 单行气泡高度的 1/4）',
-    me && me.borderRadius === '10px', me && me.borderRadius);
-  ok('我方气泡内边距 9px 13px、字号 16px（定稿截图量出来的）',
-    me && me.paddingTop === '9px' && me.paddingLeft === '13px' && me.fontSize === '16px',
-    me && [me.paddingTop, me.paddingLeft, me.fontSize].join(' / '));
-  ok('我方气泡没有边框（官方定稿没有描边）',
-    me && me.borderTopWidth === '0px', me && me.borderTopWidth);
+    'paddingLeft', 'fontSize', 'lineHeight', 'borderTopWidth', 'borderTopColor', 'borderTopStyle',
+    'boxShadow']);
+  ok('我方气泡底色 = #e5f3fd（一手 .bubble_cont.right{background:#e5f3fd}）',
+    me && me.backgroundColor === 'rgb(229, 243, 253)', me && me.backgroundColor);
+  ok('我方气泡文字 = #333（一手 .puretext.c333：网页版是浅蓝底压深字，不是白字压蓝）',
+    me && me.color === 'rgb(51, 51, 51)', me && me.color);
+  ok('我方气泡圆角 = 5px（一手 .bubble_cont{border-radius:5px}）',
+    me && me.borderRadius === '5px', me && me.borderRadius);
+  ok('我方气泡内边距 11px 16px、字号 14px、行高 20px（一手 .card1 / .puretext）',
+    me && me.paddingTop === '11px' && me.paddingLeft === '16px'
+      && me.fontSize === '14px' && me.lineHeight === '20px',
+    me && [me.paddingTop, me.paddingLeft, me.fontSize, me.lineHeight].join(' / '));
+  ok('我方气泡有 1px #e5e5e5 描边（一手 .bubble_cont{border:1px solid #e5e5e5}，两边都有）',
+    me && me.borderTopWidth === '1px' && me.borderTopStyle === 'solid'
+      && me.borderTopColor === 'rgb(229, 229, 229)',
+    me && [me.borderTopWidth, me.borderTopStyle, me.borderTopColor].join(' / '));
+  ok('我方气泡带 0 1px 1px rgba(0,0,0,.05) 的轻投影（一手 .bubble_cont 的 box-shadow）',
+    me && /rgba\(0, 0, 0, 0\.05\) 0px 1px 1px/.test(me.boxShadow || ''), me && me.boxShadow);
 
-  const peer = await css(page, PEER_BUB, ['backgroundColor', 'color', 'borderRadius']);
-  ok('对方气泡 = 纯白（官方定稿：对方是白气泡 + 近黑字）',
+  const peer = await css(page, PEER_BUB, ['backgroundColor', 'color', 'borderRadius',
+    'borderTopWidth', 'borderTopColor']);
+  ok('对方气泡 = 纯白（一手 .bubble_cont.left{background:#fff}）',
     peer && peer.backgroundColor === 'rgb(255, 255, 255)', peer && peer.backgroundColor);
-  ok('对方气泡文字 = #1a1a1a', peer && peer.color === 'rgb(26, 26, 26)', peer && peer.color);
-  ok('对方气泡圆角 = 10px（与气泡角对称 —— 官方特意保住了这份对称性）',
-    peer && peer.borderRadius === '10px', peer && peer.borderRadius);
+  ok('对方气泡文字 = #333（与我方同色，一手 .puretext.c333）',
+    peer && peer.color === 'rgb(51, 51, 51)', peer && peer.color);
+  ok('对方气泡圆角 = 5px、同样 1px #e5e5e5 描边',
+    peer && peer.borderRadius === '5px' && peer.borderTopWidth === '1px'
+      && peer.borderTopColor === 'rgb(229, 229, 229)',
+    peer && [peer.borderRadius, peer.borderTopWidth, peer.borderTopColor].join(' / '));
 
-  /* 气泡角 = 平滑小弧角（旋转 45° 的圆角方块，外角修圆 13px），不是旧版的尖锐三角。
+  /* 气泡尾 = 5px 边框拼出的直角三角（一手 .bubble_arrow），**不是**旋转方块。
      ⚠ 判定「画没画」只能看 content：探针实测**非生成**伪元素的 computed display 是
      inline 而不是 none，所以写成 display!=='none' 的断言永远不会失败（等于没断言）。 */
-  const meTail = await css(page, ME_BUB, ['content', 'width', 'height', 'backgroundColor',
-    'borderTopRightRadius'], '::after');
-  ok('我方气泡角 = 14px 小方块 / 外角 13px 圆 / 底色跟着气泡（官方「平滑小弧角」）',
-    meTail && meTail.content !== 'none' && meTail.width === '14px' && meTail.height === '14px'
-      && meTail.borderTopRightRadius === '13px' && meTail.backgroundColor === 'rgb(61, 167, 251)',
-    meTail && [meTail.content, meTail.width, meTail.borderTopRightRadius,
-      meTail.backgroundColor].join(' / '));
+  const meTail = await css(page, ME_BUB, ['content', 'width', 'height', 'top', 'right',
+    'borderTopWidth', 'borderLeftWidth', 'borderRightWidth', 'borderBottomWidth',
+    'borderTopColor', 'borderLeftColor', 'borderRightColor'], '::after');
+  ok('我方气泡尾 = 5px 边框直角三角：盒子 0×0、border 各 5px、top:15px、right:-8px',
+    meTail && meTail.content !== 'none' && meTail.width === '0px' && meTail.height === '0px'
+      && meTail.top === '15px' && meTail.right === '-8px'
+      && meTail.borderTopWidth === '5px' && meTail.borderLeftWidth === '5px'
+      && meTail.borderRightWidth === '5px' && meTail.borderBottomWidth === '5px',
+    meTail && [meTail.content, meTail.width, meTail.height, meTail.top, meTail.right,
+      meTail.borderTopWidth, meTail.borderLeftWidth].join(' / '));
+  ok('我方气泡尾只留上/左两条边色，颜色 = 我方气泡底 #e5f3fd（尖端指向头像那侧）',
+    meTail && meTail.borderTopColor === 'rgb(229, 243, 253)'
+      && meTail.borderLeftColor === 'rgb(229, 243, 253)'
+      && meTail.borderRightColor === 'rgba(0, 0, 0, 0)',
+    meTail && [meTail.borderTopColor, meTail.borderLeftColor, meTail.borderRightColor].join(' / '));
 
-  const peerTail = await css(page, PEER_BUB, ['content', 'borderTopLeftRadius', 'backgroundColor'], '::after');
-  ok('对方气泡的角在左侧、外角 13px 圆、底色 = 对方气泡底色',
-    peerTail && peerTail.content !== 'none' && peerTail.borderTopLeftRadius === '13px'
-      && peerTail.backgroundColor === 'rgb(255, 255, 255)',
-    peerTail && [peerTail.content, peerTail.borderTopLeftRadius, peerTail.backgroundColor].join(' / '));
+  const peerTail = await css(page, PEER_BUB, ['content', 'left', 'borderTopWidth',
+    'borderRightWidth', 'borderTopColor', 'borderRightColor', 'borderLeftColor'], '::after');
+  ok('对方气泡尾在左侧（left:-8px），只留上/右两条边色，颜色 = 对方气泡底 #fff',
+    peerTail && peerTail.content !== 'none' && peerTail.left === '-8px'
+      && peerTail.borderTopWidth === '5px' && peerTail.borderRightWidth === '5px'
+      && peerTail.borderTopColor === 'rgb(255, 255, 255)'
+      && peerTail.borderRightColor === 'rgb(255, 255, 255)'
+      && peerTail.borderLeftColor === 'rgba(0, 0, 0, 0)',
+    peerTail && [peerTail.left, peerTail.borderTopColor, peerTail.borderRightColor].join(' / '));
 
-  /* 旧版那套尖锐三角（border 6px 拼的）必须已经彻底退场 */
-  const oldTri = await css(page, ME_BUB, ['borderLeftWidth', 'borderLeftColor'], '::after');
-  ok('旧版的尖锐三角（border:6px 拼出来的）已经不在了',
-    oldTri && oldTri.borderLeftWidth === '0px', oldTri && oldTri.borderLeftWidth);
+  /* 旧版那两套特征必须已经彻底退场：旋转 45° 的 14px 圆角方块 / 6px 尖锐三角 */
+  const oldSq = await css(page, ME_BUB, ['width', 'height', 'transform'], '::after');
+  ok('旧版的「14px 旋转方块尾」已经不在了（现在盒子是 0×0 的边框三角）',
+    oldSq && oldSq.width === '0px' && oldSq.height === '0px'
+      && (oldSq.transform === 'none' || oldSq.transform === 'matrix(1, 0, 0, 1, 0, 0)'),
+    oldSq && [oldSq.width, oldSq.height, oldSq.transform].join(' / '));
+  const oldTri = await css(page, ME_BUB, ['borderTopWidth', 'borderLeftWidth'], '::after');
+  ok('旧版那套 6px 尖锐三角已退场（一手 .bubble_arrow 是 5px 边框，且上/左两条边同色）',
+    oldTri && oldTri.borderTopWidth === '5px' && oldTri.borderLeftWidth === '5px',
+    oldTri && [oldTri.borderTopWidth, oldTri.borderLeftWidth].join(' / '));
 
-  /* 反向验证：透明无框的气泡（.plain / .sys）**不能**挂小角 */
+  /* 反向验证：透明无框的气泡（.plain / .sys）**不能**挂尾巴 */
   const tails = await page.evaluate(() => {
     /* ⚠ 本屏可能一条 .plain / .sys 都没有（实测就是 0 条）—— 那样这条断言就白过了。
        所以除了数真实样本，再**人造**两个样本：克隆一条现有气泡、挂上类名再量一次。 */
@@ -297,21 +381,31 @@ head('=== 3. 微博皮肤（照新版 App 定稿逐条对）===');
     }
     return { total: real.total, drawn: real.drawn, made, probe };
   });
-  ok('透明气泡（.plain / .sys）上不挂小角（本屏真实 ' + tails.total + ' 条 + 人造样本 '
+  ok('透明气泡（.plain / .sys）上不挂尾巴（本屏真实 ' + tails.total + ' 条 + 人造样本 '
     + tails.made + ' 条，都没挂）', tails.drawn === 0 && tails.made === 2 && tails.probe === 0,
     '真实挂 ' + tails.drawn + ' 条 / 人造挂 ' + tails.probe + ' 条');
 
-  /* 气泡 ↔ 头像的间距：官方定稿两边都是「1 个单位」（10pt） */
+  /* 气泡 ↔ 头像的间距：一手 .bubble_cont{margin-left/right:11px}，两边一样 */
   const gapP = await css(page, '.msg:not(.me)', ['columnGap']);
   const gapM = await css(page, '.msg.me', ['columnGap']);
-  ok('气泡与头像间距 = 10px，两边一样（官方定稿：间距 1 个单位）',
-    gapP && gapP.columnGap === '10px' && gapM && gapM.columnGap === '10px',
+  ok('气泡与头像间距 = 11px，两边一样（一手 .bubble_cont{margin-left/right:11px}）',
+    gapP && gapP.columnGap === '11px' && gapM && gapM.columnGap === '11px',
     (gapP && gapP.columnGap) + ' / ' + (gapM && gapM.columnGap));
 
   const av = await css(page, '.msg .av', ['borderRadius', 'width', 'height']);
-  ok('头像是正圆 34px（官方定稿 ≈34pt 圆头像；旧版的方角头像是弃用那套）',
-    av && av.borderRadius === '50%' && av.width === '34px',
+  ok('头像是正圆 30px（一手 .avator{30px 正圆}）',
+    av && av.borderRadius === '50%' && av.width === '30px' && av.height === '30px',
     av && av.borderRadius + ' / ' + av.width);
+
+  const rowM = await css(page, '.msg', ['marginTop', 'marginBottom']);
+  ok('消息行上下间距 8px（一手 .message-item{padding:8px 0} 的行高节奏）',
+    rowM && rowM.marginTop === '8px' && rowM.marginBottom === '8px',
+    rowM && rowM.marginTop + ' / ' + rowM.marginBottom);
+
+  /* 1:1 没有昵称行：一手只有群聊才画 .name.font12；本项目采集端 is_include_group=0 */
+  const metaN = await page.evaluate(() => document.querySelectorAll('#chat .msg .meta').length);
+  ok('1:1 会话正常浏览时没有昵称行（一手只有群聊才画；本项目只采 1:1）',
+    metaN === 0, metaN + ' 条');
 
   const day = await css(page, '.day span', ['backgroundColor', 'borderTopWidth', 'paddingTop', 'paddingLeft']);
   const dayLine = await css(page, '.day', ['display'], '::before');
@@ -326,6 +420,39 @@ head('=== 3. 微博皮肤（照新版 App 定稿逐条对）===');
   ok('日期分隔条上下间距 7px（一手 .time{margin:7px auto}）',
     dayM && dayM.marginTop === '7px' && dayM.marginBottom === '7px',
     dayM && dayM.marginTop + ' / ' + dayM.marginBottom);
+
+  /* ---- 时间分隔条：一手 p.time.tc.font12 + isshowmsgtime / formatDate ---- */
+  const tm = await css(page, '.time', ['fontSize', 'color', 'textAlign', 'marginTop',
+    'marginBottom', 'backgroundColor']);
+  ok('时间分隔条 = 12px 居中细字、无底色、上下 7px（一手 p.time.tc.font12 / .time{margin:7px auto}）',
+    tm && tm.fontSize === '12px' && tm.textAlign === 'center'
+      && tm.marginTop === '7px' && tm.marginBottom === '7px'
+      && tm.backgroundColor === 'rgba(0, 0, 0, 0)',
+    tm && [tm.fontSize, tm.textAlign, tm.marginTop, tm.backgroundColor].join(' / '));
+
+  const timeChk = await page.evaluate((tsMap) => ({
+    seq: [...document.querySelectorAll('#chat .msg[data-ai]')].map(e => tsMap[e.dataset.ai] || 0),
+    labels: [...document.querySelectorAll('#chat .time')].map(n => n.textContent.trim()),
+  }), TS_MAP);
+  const expTs = expectTimeDividers(timeChk.seq);
+  ok('时间分隔条数量 = 独立复算（间隔 > 5 分钟 / 每个逻辑日首条必出）：'
+    + timeChk.labels.length + ' vs ' + expTs.length + '（本屏 ' + timeChk.seq.length + ' 条）',
+    timeChk.labels.length === expTs.length && expTs.length > 0,
+    timeChk.labels.length + ' vs ' + expTs.length);
+  ok('时间分隔条文案逐条对上一手 formatDate 五档格式',
+    expTs.length > 0 && timeChk.labels.length === expTs.length
+      && timeChk.labels.every((s, i) => s === wbTimeExpect(expTs[i])),
+    timeChk.labels.slice(0, 4).join(' | '));
+  const firstOfDay = new Set();
+  let ld = null;
+  for (const t of timeChk.seq) {
+    if (!t) continue;
+    const dk = dkey(t);
+    if (dk !== ld) { firstOfDay.add(t); ld = dk; }
+  }
+  ok('每个逻辑日的首条都出了时间分隔条（一手「首条必出」；本屏 '
+    + firstOfDay.size + ' 个逻辑日）', firstOfDay.size > 0 && firstOfDay.size <= timeChk.labels.length,
+    firstOfDay.size + ' 个首条 / ' + timeChk.labels.length + ' 条');
 
   const sb = await css(page, '.sidebar', ['backgroundColor']);
   ok('侧栏 = 深色会话列表 #33353a（一手 .chatbox .msglist{background:#33353a}）',
@@ -351,8 +478,8 @@ head('=== 3. 微博皮肤（照新版 App 定稿逐条对）===');
       else h = (r - g) / (mx - mn) + 4;
       return { h: Math.round(((h * 60) + 360) % 360), sat: mx - mn };
     };
-    const SEL = ['.shead', '.shead .sn', '.shead .stag', '.day', '.day span',
-      '.msg .meta', '.msg .av', '.msg.me .bubble:not(.plain):not(.sys)',
+    const SEL = ['.shead', '.shead .sn', '.shead .stag', '.day', '.day span', '.time',
+      '.msg .av', '.msg.me .bubble:not(.plain):not(.sys)',
       '.msg:not(.me) .bubble:not(.plain):not(.sys)'];
     const bad = [];
     let n = 0;
@@ -370,7 +497,7 @@ head('=== 3. 微博皮肤（照新版 App 定稿逐条对）===');
     });
     return { n, bad };
   });
-  ok('会话页 chrome（会话头 / 时间条 / 昵称 / 头像 / 两侧气泡）里没有一处微博橙'
+  ok('会话页 chrome（会话头 / 时间条 / 日期条 / 头像 / 两侧气泡）里没有一处微博橙'
     + '（扫了 ' + hue.n + ' 个节点的字色+底色+边框色）', hue.n >= 8 && hue.bad.length === 0,
     hue.bad.join('；'));
 }
@@ -457,10 +584,10 @@ head('=== 5. 换肤要换干净：两套皮肤都不许残留基础外观 ===');
   await goSkin('bili');
   const b = await probe();
 
-  ok('两套皮肤的我方气泡各是各的（微博蓝 #3da7fb vs B站品牌蓝 #00aeec）',
-    w.meBg === 'rgb(61, 167, 251)' && b.meBg === 'rgb(0, 174, 236)', w.meBg + ' / ' + b.meBg);
+  ok('两套皮肤的我方气泡各是各的（微博浅蓝 #e5f3fd vs B站品牌蓝 #00aeec）',
+    w.meBg === 'rgb(229, 243, 253)' && b.meBg === 'rgb(0, 174, 236)', w.meBg + ' / ' + b.meBg);
   ok('两套皮肤都没漏出基础气泡的「14px / 5px」那套圆角（它只属于本工具原生外观）',
-    w.meTLR === '10px' && w.meTRR === '10px' && b.meTLR === '16px' && b.meTRR === '0px',
+    w.meTLR === '5px' && w.meTRR === '5px' && b.meTLR === '16px' && b.meTRR === '0px',
     `${w.meTLR}/${w.meTRR} · ${b.meTLR}/${b.meTRR}`);
   ok('两套皮肤的我方气泡都不是渐变底（基础外观里 --me 是 linear-gradient）',
     w.meImg === 'none' && b.meImg === 'none',
@@ -486,11 +613,11 @@ head('=== 6. 对比度（WCAG 实算）===');
   {
     const me = await css(page, ME_BUB, ['color', 'backgroundColor']);
     const c = contrast(me.color, me.backgroundColor);
-    /* **写明的例外清单**（两条）：微博 #3da7fb、B站 #00aeec 的招牌蓝气泡 + 白字。
-       官方定稿就是这么配的，改深了就不像那两个站了；所以这里写死放宽，
-       并且把「例外只有这两条」当成断言的一部分（见本节末尾的系统扫）。 */
-    ok('微博 · 我方气泡 ≥ 2.5（如实照搬官方定稿的招牌蓝 #3da7fb + 白字；实测 '
-      + c + ':1；例外清单 1/2）', c >= 2.5, c);
+    /* 例外清单**只剩一条**（B站 #00aeec + 白字，见下一节）。
+       微博网页版是 #333 压 #e5f3fd（≈11:1），本来就读得清，不再享受例外 ——
+       早期照搬 App 版「白字压 #3da7fb」时它只有 2.59:1，那时才需要写例外。 */
+    ok('微博 · 我方气泡 ≥ 4.5（一手 .puretext.c333 压 #e5f3fd，实测 '
+      + c + ':1；不再需要例外）', c >= 4.5, c);
 
     /* ⚠ --bg 是**变量 token 字符串**（'#ececec'），直接丢进对比度公式会得 NaN，
        必须用 resolveVar 挂到临时元素上解析成 rgb。 */
@@ -546,10 +673,11 @@ head('=== 6. 对比度（WCAG 实算）===');
   {
     const me = await css(page, ME_BUB, ['color', 'backgroundColor']);
     const c = contrast(me.color, me.backgroundColor);
-    /* 同一条例外的另一半：B站 自己的我方气泡就是白字压 #00aeec。
+    /* 例外清单的最后一条：B站 自己的我方气泡就是白字压 #00aeec。
        如实照搬是「像原站」的前提 —— 原来还有「想读清楚就切回原版」这条退路，
-       现在开关取消了，所以例外**只允许有这两条**（末尾的系统扫会兜住）。 */
-    ok('B站 · 我方气泡 ≥ 2.5（如实照搬原站配色，实测 ' + c + ':1；例外清单 2/2）', c >= 2.5, c);
+       现在开关取消了，所以例外**只允许有这一条**（末尾的系统扫会兜住）。
+       （微博网页版 #333 压 #e5f3fd ≈ 11:1，不在此列。） */
+    ok('B站 · 我方气泡 ≥ 2.5（如实照搬原站配色，实测 ' + c + ':1；例外清单唯一一条）', c >= 2.5, c);
 
     const st = await css(page, '.stats', ['color']);
     const sb = await css(page, '.sidebar', ['backgroundColor']);
@@ -579,14 +707,15 @@ head('=== 6. 对比度（WCAG 实算）===');
   /* ---- 聊天区的**系统扫** ----
      「原版」取消之后没有退路了，所以不能只量自己想到的那几个选择器（第 3/4 节是逐条量）。
      这里遍历聊天区所有「自己直接带可见文字」的节点，量字色 vs 最近的实底祖先：
-       · 我方气泡是**写明的例外**，单独统计，不参与 4.5 判定；
+       · 我方气泡是**写明的例外**，但**只有 B站**（白字压 #00aeec 2.54:1）；
+         微博网页版是 #333 压 #e5f3fd，必须照常过 4.5；
        · 压在图片/卡片上的浮层文字（.ocrtip / .imgs / .links / .wcard）量不出意义，跳过；
        · 多选勾选框、按钮这些非正文也跳过。
-     判据：除例外外，最小值必须 ≥ 4.5，而且至少要扫到 8 个节点（否则等于没扫）。 */
+     判据：除例外（仅 B站）外，最小值必须 ≥ 4.5，而且至少要扫到 8 个节点（否则等于没扫）。 */
   for (const [key, lbl] of [['weibo', '微博'], ['bili', 'B站']]) {
     await goSkin(key);
     await page.waitForTimeout(120);
-    const sweep = await page.evaluate(() => {
+    const sweep = await page.evaluate((isBili) => {
       /* ⚠ 颜色解析要吃两种写法：rgb()/rgba()，以及 Chromium 对 color-mix() 的
          computed 结果 `color(srgb 0.93 0.93 0.93 / 0.9)` —— 前三个是 0~1 的浮点。
          不处理这种写法会被误读成「rgb(1,1,1) = 近黑」，于是会话头昵称被算成 1.64:1
@@ -620,14 +749,15 @@ head('=== 6. 对比度（WCAG 实算）===');
         if (/^(none)$/i.test(cs.display) || cs.visibility === 'hidden') return;
         const r = ratio(cs.color, bgOf(el));
         n++;
-        if (el.closest('.msg.me') && el.closest('.bubble')) { exc = r; return; }   /* 例外：我方气泡 */
+        if (isBili && el.closest('.msg.me') && el.closest('.bubble')) { exc = r; return; }   /* 例外：仅 B站 */
         if (r < worst.r) worst = { r, who: (el.className || el.tagName) + '@' + cs.fontSize };
       });
       return { n, worst, exc };
-    });
-    ok(lbl + ' · 聊天区所有正文节点逐个扫：除「我方气泡」这条例外外，最差也 ≥ 4.5'
-      + '（共扫 ' + sweep.n + ' 个；最差 ' + sweep.worst.who + ' = ' + sweep.worst.r + ':1；'
-      + '我方气泡例外实测 ' + sweep.exc + ':1）',
+    }, key === 'bili');
+    ok(lbl + ' · 聊天区所有正文节点逐个扫：'
+      + (key === 'bili' ? '除「我方气泡」这条例外（白字压 #00aeec）外' : '无例外')
+      + '，最差也 ≥ 4.5（共扫 ' + sweep.n + ' 个；最差 ' + sweep.worst.who + ' = '
+      + sweep.worst.r + ':1' + (key === 'bili' ? '；我方气泡例外实测 ' + sweep.exc + ':1' : '') + '）',
       sweep.n >= 8 && sweep.worst.r >= 4.5, JSON.stringify(sweep));
   }
   await goSkin('weibo');
@@ -658,8 +788,9 @@ head('=== 7. 深色主题下不能变成「深底压深字」===');
   await page.waitForTimeout(150);
   ok('切回浅色主题后皮肤配色恢复', (await rootVar(page, '--bg')) === '#f1f2f3', await rootVar(page, '--bg'));
 
-  /* ---- 微博 + 深色：形状要留着，但渐变底的**我方**气泡角必须藏掉 ----
-     （小角用的是 background:inherit，14px 方块里渐变会「从头重放」，接缝看得出来） */
+  /* ---- 微博 + 深色：形状要留着，但我方那条尾巴必须藏掉 ----
+     （尾巴用的是 border-color:var(--me)，深色下 --me 走深色方案，
+      挂在浅色气泡形状上会露出接缝；对方那条走 --peer 纯色，深色下照样成立） */
   await goSkin('weibo');
   await page.click('#themeBtn');
   await page.waitForTimeout(180);
@@ -667,21 +798,26 @@ head('=== 7. 深色主题下不能变成「深底压深字」===');
   /* ⚠ 「藏掉」是用 display:none 实现的 —— 这时 content 仍然是 ""（生成的伪元素），
      所以只能看 display，不能看 content（看 content 会永远为真或永远为假）。 */
   const dMeTail = await css(page, ME_BUB, ['display'], '::after');
-  const dPeerTail = await css(page, PEER_BUB, ['content', 'backgroundColor'], '::after');
-  ok('深色主题 + 微博：仍是 10px 圆角那套排版（形状不跟着主题变）',
-    dMe && dMe.borderRadius === '10px', dMe && dMe.borderRadius);
-  ok('深色主题 + 微博：我方气泡角藏掉（--me 是渐变，小方块会露出接缝）',
+  /* 尾巴是边框三角：颜色在 border-*-color 上，不在 background 上（background 恒透明） */
+  const dPeerTail = await css(page, PEER_BUB, ['content', 'borderTopColor', 'borderRightColor'], '::after');
+  ok('深色主题 + 微博：仍是 5px 圆角那套排版（形状不跟着主题变）',
+    dMe && dMe.borderRadius === '5px', dMe && dMe.borderRadius);
+  ok('深色主题 + 微博：我方气泡尾巴藏掉（--me 在深色下是另一套色，会露出接缝）',
     dMeTail && dMeTail.display === 'none', dMeTail && dMeTail.display);
-  ok('深色主题 + 微博：对方气泡角照旧画着（--peer 是纯色，没这个问题）',
-    dPeerTail && dPeerTail.content !== 'none' && dPeerTail.backgroundColor !== 'rgba(0, 0, 0, 0)',
-    dPeerTail && dPeerTail.content + ' / ' + dPeerTail.backgroundColor);
+  ok('深色主题 + 微博：对方气泡尾巴照旧画着，且两条边色都解析到了实色',
+    dPeerTail && dPeerTail.content !== 'none'
+      && dPeerTail.borderTopColor !== 'rgba(0, 0, 0, 0)'
+      && dPeerTail.borderRightColor !== 'rgba(0, 0, 0, 0)',
+    dPeerTail && dPeerTail.content + ' / ' + dPeerTail.borderTopColor);
 
   await page.click('#themeBtn');   // 切回浅色
   await page.waitForTimeout(180);
-  const lMeTail = await css(page, ME_BUB, ['content', 'backgroundColor'], '::after');
-  ok('切回浅色后我方气泡角又回来了（深色下藏掉的那条没有留在浅色里）',
-    lMeTail && lMeTail.content !== 'none' && lMeTail.backgroundColor === 'rgb(61, 167, 251)',
-    lMeTail && lMeTail.content + ' / ' + lMeTail.backgroundColor);
+  const lMeTail = await css(page, ME_BUB, ['content', 'borderTopColor', 'borderLeftColor'], '::after');
+  ok('切回浅色后我方气泡尾巴又回来了（深色下藏掉的那条没有留在浅色里；两条边色 = #e5f3fd）',
+    lMeTail && lMeTail.content !== 'none'
+      && lMeTail.borderTopColor === 'rgb(229, 243, 253)'
+      && lMeTail.borderLeftColor === 'rgb(229, 243, 253)',
+    lMeTail && lMeTail.content + ' / ' + lMeTail.borderTopColor);
 }
 
 /* ============================================================
@@ -714,9 +850,13 @@ head('=== 8. 刷新后皮肤仍跟着数据源；老版本留下的偏好被忽�
 }
 
 /* ============================================================
-   9. 皮肤下高清截图照样能用
+   9. 皮肤下高清截图照样能用 + 绘制度量必须跟着皮肤换
+   ------------------------------------------------------------
+   高清导出是在 canvas 里**重新排一遍版**，用的是一套 SHOT_* 常量。
+   那些常量是 CSS 的**镜子**（铁律 27）：改 .msg/.av/.body/.bubble 必须同步改，
+   否则导出图和屏幕上不是一张脸。这里两套皮肤各真导出一次，逐条对表。
    ============================================================ */
-head('=== 9. 皮肤模式下高清截图导出不受影响 ===');
+head('=== 9. 皮肤模式下高清截图导出不受影响（含 SHOT_* 度量对表）===');
 {
   const DL = fs.mkdtempSync(path.join(os.tmpdir(), 'skin-dl-'));
   const got = [];
@@ -725,56 +865,95 @@ head('=== 9. 皮肤模式下高清截图导出不受影响 ===');
     catch (e) { got.push({ err: e.message }); }
   });
 
-  await goSkin('bili');
-  await page.waitForTimeout(150);
-  await page.click('#shotBtn');
-  await page.waitForTimeout(500);
-  await page.click('#shotClear');
-  /* 只选前几条，保证落在单页里 → 直接下 PNG */
-  await page.evaluate(() => {
-    const cks = [...document.querySelectorAll('#chat .shotck')].slice(0, 4);
-    cks.forEach(c => c.click());
-  });
-  await page.waitForTimeout(200);
-  await page.click('#shotGo');
-  await page.waitForTimeout(2600);
+  /* 期望值全部抄自各自那段 CSS（改 CSS 必须回来改这里） */
+  const EXPECT = {
+    weibo: { av: 30, avGap: 11, msgMy: 8, bpadX: 16, bpadY: 11, body: 390,
+      lh: 20 / 14, fs: 14, fsMeta: 12, border: true, tail: true, meta: false,
+      timeGap: 300000, dayPill: false, dayH: 33, imgMax: 240, radius: 5 },
+    bili: { av: 30, avGap: 10, msgMy: 11, bpadX: 16, bpadY: 8, body: 398,
+      lh: 1.5, fs: 14, fsMeta: 13, border: false, tail: false, meta: true,
+      timeGap: 0, dayPill: false, dayH: 51, imgMax: 300,
+      radius: [[0, 16, 16, 16], [16, 0, 16, 16]] },
+  };
 
-  const png = got.find(p => typeof p === 'string' && /\.png$/i.test(p));
-  ok('B站皮肤下导出成功，拿到 PNG', !!png, got.map(p => (typeof p === 'string' ? path.basename(p) : p.err)).join(','));
-
-  if (png) {
-    const buf = fs.readFileSync(png);
-    const w = buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47 ? buf.readUInt32BE(16) : 0;
-    ok('导出图宽度仍是 1520（皮肤不影响导出画布）', w === 1520, w);
-
-    const bands = await page.evaluate(async () => {
-      const el = document.querySelector('#shotGrid .shotcard img');
-      if (!el) return -1;
-      const im = new Image(); im.src = el.src; await im.decode();
-      const c = document.createElement('canvas');
-      const W = Math.min(im.naturalWidth, 700), H = Math.min(im.naturalHeight, 1600);
-      c.width = W; c.height = H;
-      const g = c.getContext('2d'); g.drawImage(im, 0, 0, W, H);
-      const d = g.getImageData(0, 0, W, H).data;
-      const r0 = d[0], g0 = d[1], b0 = d[2];
-      const B = 10, ink = new Array(B).fill(0), tot = new Array(B).fill(0);
-      for (let y = 0; y < H; y++) {
-        const bi = Math.min(B - 1, Math.floor(y / (H / B)));
-        for (let x = 0; x < W; x++) {
-          const i = (y * W + x) * 4; tot[bi]++;
-          if (Math.abs(d[i] - r0) + Math.abs(d[i + 1] - g0) + Math.abs(d[i + 2] - b0) > 24) ink[bi]++;
-        }
-      }
-      return ink.filter((v, i) => v / tot[i] > 0.004).length;
+  for (const [key, lbl] of [['weibo', '微博'], ['bili', 'B站']]) {
+    await goSkin(key);
+    await page.waitForTimeout(150);
+    await page.click('#shotBtn');
+    await page.waitForTimeout(400);
+    await page.click('#shotClear');
+    /* 只选前几条，保证落在单页里 → 直接下 PNG */
+    await page.evaluate(() => {
+      const cks = [...document.querySelectorAll('#chat .shotck')].slice(0, 4);
+      cks.forEach(c => c.click());
     });
-    ok('导出图不是空白（10 条横带里 ' + bands + ' 条有墨迹）', bands >= 8, bands);
+    await page.waitForTimeout(200);
+    got.length = 0;
+    await page.click('#shotGo');
+    await page.waitForFunction(() => /已生成|失败|没能导出/.test(document.getElementById('shotProg').innerText),
+      null, { timeout: 120000 });
+    await page.waitForTimeout(600);
+
+    const st = await page.evaluate(() => window.__shotStats || null);
+    const m = st && st.metrics, E = EXPECT[key];
+    ok(lbl + ' · 高清导出度量表与 CSS 逐条对得上（av ' + (m && m.av) + ' / 间距 '
+      + (m && m.avGap) + ' / 内边距 ' + (m && m.bpadX) + '×' + (m && m.bpadY)
+      + ' / 气泡宽 ' + (m && m.body) + ' / 圆角 ' + JSON.stringify(m && m.radius)
+      + ' / 昵称行 ' + (m && m.meta) + '）',
+      !!m && m.av === E.av && m.avGap === E.avGap && m.msgMy === E.msgMy
+        && m.bpadX === E.bpadX && m.bpadY === E.bpadY && m.body === E.body
+        && Math.abs(m.lh - E.lh) < 1e-9 && m.fs === E.fs && m.fsMeta === E.fsMeta
+        && m.border === E.border && m.tail === E.tail && m.meta === E.meta
+        && m.timeGap === E.timeGap && m.dayPill === E.dayPill && m.dayH === E.dayH
+        && m.imgMax === E.imgMax && JSON.stringify(m.radius) === JSON.stringify(E.radius),
+      JSON.stringify(m));
+
+    if (key === 'weibo') {
+      /* 微博一手把时间放在居中分隔条里（isshowmsgtime），导出也必须带上 */
+      ok('微博 · 导出的块清单里带时间分隔条（kind=time），与 msg/day 共存',
+        !!st && st.kinds.indexOf('time') >= 0 && st.kinds.indexOf('msg') >= 0
+          && st.kinds.indexOf('day') >= 0,
+        st && JSON.stringify(st.kinds.slice(0, 14)));
+    }
+
+    const png = got.find(p => typeof p === 'string' && /\.png$/i.test(p));
+    ok(lbl + ' 皮肤下导出成功，拿到 PNG', !!png,
+      got.map(p => (typeof p === 'string' ? path.basename(p) : p.err)).join(','));
+
+    if (png) {
+      const buf = fs.readFileSync(png);
+      const w = buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47 ? buf.readUInt32BE(16) : 0;
+      ok('导出图宽度仍是 1520（皮肤不影响导出画布）', w === 1520, w);
+
+      const bands = await page.evaluate(async () => {
+        const el = document.querySelector('#shotGrid .shotcard img');
+        if (!el) return -1;
+        const im = new Image(); im.src = el.src; await im.decode();
+        const c = document.createElement('canvas');
+        const W = Math.min(im.naturalWidth, 700), H = Math.min(im.naturalHeight, 1600);
+        c.width = W; c.height = H;
+        const g = c.getContext('2d'); g.drawImage(im, 0, 0, W, H);
+        const d = g.getImageData(0, 0, W, H).data;
+        const r0 = d[0], g0 = d[1], b0 = d[2];
+        const B = 10, ink = new Array(B).fill(0), tot = new Array(B).fill(0);
+        for (let y = 0; y < H; y++) {
+          const bi = Math.min(B - 1, Math.floor(y / (H / B)));
+          for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4; tot[bi]++;
+            if (Math.abs(d[i] - r0) + Math.abs(d[i + 1] - g0) + Math.abs(d[i + 2] - b0) > 24) ink[bi]++;
+          }
+        }
+        return ink.filter((v, i) => v / tot[i] > 0.004).length;
+      });
+      ok('导出图不是空白（10 条横带里 ' + bands + ' 条有墨迹）', bands >= 8, bands);
+    }
+    /* 退出前必须先关掉预览面板：它是覆盖层，会替 #shotExit 接住点击 */
+    await page.click('#shotClose');
+    await page.click('#shotExit');
+    await page.waitForTimeout(200);
+    ok(lbl + ' · 退出多选模式后勾选框清干净（皮肤模式没留下残影）',
+      await page.locator('#chat .shotck').count() === 0);
   }
-  /* 退出前必须先关掉预览面板：它是覆盖层，会替 #shotExit 接住点击 */
-  await page.click('#shotClose');
-  await page.click('#shotExit');
-  await page.waitForTimeout(200);
-  ok('退出多选模式后勾选框清干净（皮肤模式没留下残影）',
-    await page.locator('#chat .shotck').count() === 0);
   try { fs.rmSync(DL, { recursive: true, force: true }); } catch (e) {}
 }
 
@@ -841,10 +1020,14 @@ head('=== 11. 气泡宽度：短消息不留白（含反向验证）===');
       const pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
       const r = document.createRange(); r.selectNodeContents(b);
       const rect = b.getBoundingClientRect();
-      /* 单行气泡的判据：高度 ≈ 行高 + 上下 padding。
-         多行气泡的最后一行本来就短，那个「白留」是正常的折行，别误判成 bug。 */
-      const oneLine = rect.height <= (parseFloat(cs.lineHeight) || 0)
-        + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 1;
+      /* 单行气泡的判据：**只数 Range 的真实排版盒个数**。
+         ⚠ 别用「高度 ≈ line-height + padding」那套：Chromium 的行盒比 line-height
+         高（微博 14px/20px 实测行盒 22px，气泡高 44；B站 1.5 也一样差 1px），
+         两种皮肤都会被误判成多行，把样本滤得一条不剩（实测 0 条）。
+         多行气泡的排版盒数 = 行数，最后一行本来就短，那个「白留」是正常折行，
+         由盒数天然排除，不会误判成 bug。 */
+      const boxes = [...r.getClientRects()].filter(x => x.width > 0.5 && x.height > 0.5);
+      const oneLine = boxes.length === 1;
       rows.push({ t, tl: t.length, side: msg.className.indexOf('me') >= 0 ? 'me' : 'peer',
         bw: rect.width, tw: r.getBoundingClientRect().width, pad: pl + pr,
         leftover: rect.width - r.getBoundingClientRect().width - pl - pr, oneLine });
