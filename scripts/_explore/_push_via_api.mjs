@@ -21,13 +21,28 @@ import { execFileSync } from 'node:child_process';
 
 const REPO = 'Tsingyun/bili-weibo-dm-backup';
 const API = 'https://api.github.com';
-const SHA = process.argv[2];
-if (!SHA || SHA.startsWith('--')) { console.error('用法: node _push_via_api.mjs <commit-sha> [--onto <base-sha>]'); process.exit(2); }
-
 const git = (args) => execFileSync('git', args, { encoding: 'buffer', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
 const hasObject = (sha) => { try { execFileSync('git', ['cat-file', '-e', sha], { stdio: ['ignore', 'ignore', 'ignore'] }); return true; } catch { return false; } };
 const TOKEN = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 if (!TOKEN) throw new Error('拿不到 gh token（gh auth token 为空）');
+
+/* --adopt-only <sha>：只把远端提交链 adopt 回本地并对齐引用，不推送。
+   用于「上一轮已经推过，但本地对象库缺对象 / 从没同步过」的补救。
+   ⚠ 必须排在下面的位置参数校验之前 —— 否则 argv[2] 是 '--adopt-only'，会被当成没给 sha。 */
+const adoptIdx = process.argv.indexOf('--adopt-only');
+if (adoptIdx !== -1) {
+  const tip = process.argv[adoptIdx + 1];
+  if (!tip) throw new Error('--adopt-only 需要给一个 sha');
+  console.log('只 adopt，不推送：', tip);
+  await adopt(tip);
+  execFileSync('git', ['update-ref', 'refs/remotes/origin/main', tip], { stdio: ['ignore', 'pipe', 'pipe'] });
+  execFileSync('git', ['update-ref', 'refs/heads/main', tip], { stdio: ['ignore', 'pipe', 'pipe'] });
+  console.log('本地 main / origin/main 已对齐到', tip);
+  process.exit(0);
+}
+
+const SHA = process.argv[2];
+if (!SHA || SHA.startsWith('--')) { console.error('用法: node _push_via_api.mjs <commit-sha> [--onto <base-sha>] [--adopt-only <sha>]'); process.exit(2); }
 
 async function api(p, method = 'GET', body) {
   const r = await fetch(API + p, {
@@ -54,21 +69,29 @@ async function api(p, method = 'GET', body) {
    · 别用 stdin 管道喂 `git hash-object`：本机实测 execFileSync 的 input 管道会让 git
      读到空内容（报 object fails fsck: unterminatedHeader）。把临时文件路径当参数传最稳。 */
 async function adopt(sha) {
-  if (hasObject(sha)) return;
-  const c = await api(`/repos/${REPO}/git/commits/${sha}`);
-  const who = (w) => `${w.name} <${w.email}> ${Math.floor(Date.parse(w.date) / 1000)} +0000`;
-  const raw = 'tree ' + c.tree.sha + '\n' +
-    c.parents.map(p => 'parent ' + p.sha).join('\n') + '\n' +
-    'author ' + who(c.author) + '\n' + 'committer ' + who(c.committer) + '\n\n' + c.message + '\n';
-  const tmp = path.join(os.tmpdir(), 'adopt_' + sha.slice(0, 10) + '.raw');
-  fs.writeFileSync(tmp, Buffer.from(raw, 'utf8'));
-  const got = execFileSync('git', ['hash-object', '-t', 'commit', '-w', '--literally', tmp],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  fs.unlinkSync(tmp);
-  if (got !== sha) throw new Error(`adopt 出来的 SHA 不对（${got} != ${sha}）—— 消息/时区规范化规则又变了？`);
-  console.log('  adopt ✓', sha.slice(0, 10), '·', c.message.split('\n')[0].slice(0, 46));
-  if (!hasObject(c.tree.sha)) console.log('  ⚠ 该提交的 tree 对象本地也没有，git show/log --stat 仍会缺内容');
-  for (const p of c.parents) await adopt(p.sha);
+  /* ⚠ 本地已有的提交也要继续往父链走：它自己的父对象同样可能缺失
+     （实测踩过：tip 本地有、它父亲的没有，adopt 到 tip 就收工，git log 照样断）。 */
+  let parents = null;
+  if (hasObject(sha)) {
+    const r = git(['cat-file', 'commit', sha]).toString('utf8');
+    parents = [...r.matchAll(/^parent ([0-9a-f]{40})$/gm)].map(m => m[1]);
+  } else {
+    const c = await api(`/repos/${REPO}/git/commits/${sha}`);
+    parents = c.parents.map(p => p.sha);
+    const who = (w) => `${w.name} <${w.email}> ${Math.floor(Date.parse(w.date) / 1000)} +0000`;
+    const raw = 'tree ' + c.tree.sha + '\n' +
+      parents.map(p => 'parent ' + p).join('\n') + '\n' +
+      'author ' + who(c.author) + '\n' + 'committer ' + who(c.committer) + '\n\n' + c.message + '\n';
+    const tmp = path.join(os.tmpdir(), 'adopt_' + sha.slice(0, 10) + '.raw');
+    fs.writeFileSync(tmp, Buffer.from(raw, 'utf8'));
+    const got = execFileSync('git', ['hash-object', '-t', 'commit', '-w', '--literally', tmp],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    fs.unlinkSync(tmp);
+    if (got !== sha) throw new Error(`adopt 出来的 SHA 不对（${got} != ${sha}）—— 消息/时区规范化规则又变了？`);
+    console.log('  adopt ✓', sha.slice(0, 10), '·', c.message.split('\n')[0].slice(0, 46));
+    if (!hasObject(c.tree.sha)) console.log('  ⚠ 该提交的 tree 对象本地也没有，git show/log --stat 仍会缺内容');
+  }
+  for (const p of parents) await adopt(p);
 }
 
 /* ---- 1. 本地提交的原始信息 ---- */
