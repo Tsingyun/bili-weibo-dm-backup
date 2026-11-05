@@ -481,8 +481,13 @@ async function testStat(k) {
   const M = stat[k].M;
   const exp = stat[k].axisNew;
   const range = doc.getElementById('statRange').textContent.replace(/\s+/g, ' ');
-  chk(range.includes(String(exp.length)), '★ 「共 N 天」== 独立重算的连续逻辑日天数',
-    '页面：' + range + ' ｜ 期望 ' + exp.length + ' 天');
+  /* 页面用 toLocaleString()：天数过千会写成「1,010 天」。旧断言拿
+     `range.includes(String(exp.length))` 纯字符串包含，一旦跨过 1000 就误红
+     （数据其实没错，下面热力图方格数也仍是 1010 vs 1010）。这里改成
+     从「共 N 天」里把数字抠出来、去千分位再数值比较。 */
+  const shownDays = Number(((range.match(/共\s*([\d,]+)\s*天/) || [])[1] || '').replace(/,/g, ''));
+  chk(shownDays === exp.length, '★ 「共 N 天」== 独立重算的连续逻辑日天数',
+    '页面：' + range + ' ｜ 读到 ' + shownDays + ' ｜ 期望 ' + exp.length + ' 天');
   chk(/05:00 分界/.test(range), '标题区间行写明「按每天 05:00 分界」', range.slice(0, 70));
   chk(range.includes(exp[0]) && range.includes(exp[exp.length - 1]),
     '区间首尾与独立重算一致', exp[0] + ' ~ ' + exp[exp.length - 1]);

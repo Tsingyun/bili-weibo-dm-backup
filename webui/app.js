@@ -657,6 +657,61 @@ $('#btnExport').onclick = async () => {
 };
 
 /* ---------------- 维护动作 ---------------- */
+/* ---------------- 独立的「识别图片文字」按钮 ----------------
+   「开始备份」那条链（btnFetch）**一行都不改**，它照样是
+   fetch → faces → ocr → vlm → snapshot → doctor 的全链路。
+   这里只给「我只想补识别图片、不想重新抓消息」一个看得见的入口：
+   服务端把 `--steps ocr` 单独排队跑，不需要登录、不需要联网。 */
+async function refreshOcrStatus() {
+  const box = $('#ocrSessions');
+  if (!box) return;
+  try {
+    const r = await api('/api/ocr/status');
+    $('#ocrEnvStat').textContent = r.ready ? '环境已就绪' : '未安装 OCR 环境';
+    box.innerHTML = (r.sessions || []).map((s) =>
+      `<label class="chk"><input type="checkbox" class="ocrpick" data-key="${esc(s.key)}"` +
+      `${s.pending > 0 ? ' checked' : ''}> ${esc(s.label)}` +
+      `（待识别 ${nfmt(s.pending)} 张 / 共 ${nfmt(s.images)} 张）</label>`
+    ).join('') || '<span class="dim">没有可识别的会话</span>';
+    $('#btnOcrRun').disabled = !r.ready || !r.totalPending;
+    $('#ocrHint').textContent = !r.ready
+      ? '双击「命令/图片与OCR/安装OCR环境.cmd」后即可使用'
+      : (r.totalPending ? `共 ${nfmt(r.totalPending)} 张待识别` : '全部识别完毕，没有需要处理的图片');
+  } catch (e) {
+    $('#ocrEnvStat').textContent = '状态读取失败';
+    $('#ocrHint').textContent = e.message;
+    $('#btnOcrRun').disabled = true;
+  }
+}
+
+/* 和 runJobChain 一样串行"看"日志；收尾多做一件事：把待识别数量刷成最新。
+   刻意复制而不是改 runJobChain —— 那条链属于「开始备份」，别让它多一个分支。 */
+function runOcrChain(list) {
+  chainIds = list.map((j) => j.id);
+  let i = 0;
+  const next = () => {
+    i++;
+    if (i >= list.length) { chainIds = []; refreshOcrStatus(); return; }
+    const nx = list[i];
+    toast('接着执行：' + nx.title, 'ok');   // 链尾还有「重建搜索索引」，别写成"接着识别"
+    watchJob(nx.id, nx.title, next, { keepLog: true });
+  };
+  watchJob(list[0].id, list[0].title, next);
+}
+
+$('#btnOcrRefresh').onclick = refreshOcrStatus;
+$('#btnOcrRun').onclick = async () => {
+  const keys = $$('.ocrpick').filter((c) => c.checked).map((c) => c.dataset.key);
+  if (!keys.length) return toast('至少要勾一个会话', 'bad');
+  try {
+    const r = await api('/api/ocr/run', { method: 'POST', json: { sessions: keys } });
+    toast('已开始识别：' + r.queued.join('、') +
+      (r.jobs.length > 1 ? '（串行执行）' : ''), 'ok');
+    showStep(4);                       // 日志面板在第 4 步，切过去才看得见进度
+    if (r.jobs.length) runOcrChain(r.jobs);
+  } catch (e) { toast(e.message, 'bad'); }
+};
+
 const RUN_STEPS = [
   ['fetch', '只抓取（不跑索引）', '把新消息拉下来，后面几步留给需要时再跑'],
   ['faces', '同步表情图', '把 [委屈] 这类文字表情换成官方图片'],
@@ -760,6 +815,7 @@ function renderJobs() {
 
 /* ---------------- 启动 ---------------- */
 refreshState();
+refreshOcrStatus();   // 让「识别图片文字」卡片一进页面就显示待识别数，不用先点刷新
 
 // 兜底轮询：页面切到后台就不刷；有任务在跑时日志走 SSE，这里也不抢。
 setInterval(() => {

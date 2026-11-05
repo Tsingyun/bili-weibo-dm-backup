@@ -34,6 +34,7 @@ import { startJob, getJob, listJobs, killJob, subscribe, anyRunning } from './li
 import { FORMATS, KINDS, runExport, collect } from './lib/export_engine.mjs';
 import { importBackup, listImported, deleteImported } from './lib/import_backup.mjs';
 import { listRuns, loadRetry } from './lib/runreport.mjs';
+import { ocrStatus, ocrEnvReady } from './lib/ocr_status.mjs';
 import { findBrowser, statusFor, isPortOpen, readCookies, saveCookie, COOKIE_HINT, PORT as CDP_PORT } from './login.mjs';
 
 const ARGS = process.argv.slice(2);
@@ -571,6 +572,11 @@ async function handleApi(req, res, u) {
       return sendJson(res, { ok: true, status: st });
     } catch (e) { return fail(res, 400, e.message); }
   }
+  /* 独立的「识别图片文字」按钮要显示「还有几张没识别」——纯只读，不启动任何进程 */
+  if (req.method === 'GET' && p === '/api/ocr/status') {
+    try { return sendJson(res, { ok: true, ...ocrStatus() }); }
+    catch (e) { return fail(res, 400, e.message); }
+  }
   if (req.method === 'GET' && p === '/api/exports') {
     return sendJson(res, { ok: true, files: recentExports(50) });
   }
@@ -720,6 +726,55 @@ async function handleApi(req, res, u) {
     const a = [S('run_pipeline.mjs'), '--session', s.key, '--steps', step];
     const job = startJob({ title: step + ' · ' + s.label, exe: SELF, args: a, tag: 'step:' + step });
     return sendJson(res, { ok: true, job: job.summary() });
+  }
+
+  /* ---------------------------------------------------------------
+     手动触发 OCR：一个**独立入口**，不和「开始备份」共用任何步骤。
+     ---------------------------------------------------------------
+     · 只挑勾中的会话（没勾 = 全部非导入会话），逐个排队串行跑；
+     · 复用 `run_pipeline.mjs --steps ocr`，不再重写一遍识别逻辑
+       （server.mjs 的立身之本：只串参、不实现业务逻辑）；
+     · `--steps ocr` 不含 fetch/faces → 不需要登录态；
+     · 导入的只读备份一律拒绝（和 run_pipeline 的防线保持两道）；
+     · 没装 OCR 环境时明确回 400，而不是建一个注定「跳过」的空任务。
+     ⚠ 这里**没有**动 /api/fetch：现有「开始备份 / 增量 / 全量」原样不动。
+     --------------------------------------------------------------- */
+  if (p === '/api/ocr/run') {
+    const body = await readJsonBody(req);
+    const keys = Array.isArray(body.sessions) && body.sessions.length
+      ? body.sessions
+      : loadSessions().filter((s) => !s.imported).map((s) => s.key);
+    const chosen = [];
+    for (const k of keys) {
+      let s;
+      try { s = findSession(String(k)); }
+      catch (e) { return fail(res, 400, e.message); }
+      if (s.imported) return fail(res, 400, '会话「' + s.key + '」是导入的只读备份，不能跑 OCR');
+      chosen.push(s);
+    }
+    if (!chosen.length) return fail(res, 400, '至少要选一个会话');
+    if (!ocrEnvReady()) {
+      return fail(res, 400, '还没装 OCR 环境 —— 双击「命令/图片与OCR/安装OCR环境.cmd」后可在这里一键识别');
+    }
+    const jobs = [];
+    for (const s of chosen) {
+      const a = [S('run_pipeline.mjs'), '--session', s.key, '--steps', 'ocr'];
+      jobs.push(startJob({
+        title: '识别图内文字 · ' + s.label, exe: SELF, args: a, tag: 'ocr:' + s.key,
+      }, { queue: 'serial' }).summary());
+    }
+    /* 排在所有 OCR 任务之后：只有「搜索备份」用的 FTS 库重建过，新认出来的
+       文字才真的能被命令行全文检索搜到（查看页读 ocr.js，本来就是实时生效的）。
+       build_fts 全量重建 1~2 秒、纯本地 SQLite、不联网，不必判断有没有新图。
+       用同一个 serial 队列 → 一定等前面的识别全部跑完才开始。 */
+    jobs.push(startJob({
+      title: '重建搜索索引（让「搜索备份」搜到新文字）',
+      exe: SELF,
+      args: ['--disable-warning=ExperimentalWarning', S('build_fts.mjs')],
+      tag: 'ocr:fts',
+    }, { queue: 'serial' }).summary());
+    writeStateFile({ lastOcrAt: new Date().toISOString(), lastOcrSessions: chosen.map((s) => s.key) });
+    return sendJson(res, { ok: true, jobs, queued: chosen.map((s) => s.key) });
   }
 
   if (p === '/api/job/kill') {

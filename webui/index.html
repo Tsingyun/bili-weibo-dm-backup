@@ -225,6 +225,25 @@
           <a class="btn primary" href="/viewer" target="_blank" rel="noopener">打开查看备份 ↗</a>
         </div>
       </div>
+
+      <!-- 独立的 OCR 入口：不挂在「开始备份」下，随时可点。
+           只补还没识别过的新图，识别完会刷新搜索索引；现有备份流程一行都不改。 -->
+      <div class="box" id="ocrBox">
+        <div class="log-head">
+          <b>识别图片文字（OCR）</b>
+          <span class="dim" id="ocrEnvStat">检查中…</span>
+        </div>
+        <p class="lead">在本机识别图片里的文字，图片不外传。只处理还没识别过的新图，
+          可以重复点、不会重跑旧图；识别完会自动重建搜索索引，查看页搜索框和
+          「搜索备份」都能搜到新文字。不抓取消息、不需要登录。</p>
+        <div class="row" id="ocrSessions"></div>
+        <div class="actions">
+          <button class="btn primary" id="btnOcrRun">开始识别图片文字</button>
+          <button class="btn ghost" id="btnOcrRefresh">刷新数量</button>
+          <span class="dim" id="ocrHint"></span>
+        </div>
+      </div>
+
       <div class="table-wrap"><table id="runTable"></table></div>
       <div class="box">
         <div class="log-head"><b>最近几次抓取</b><span class="dim" id="runsStat">—</span></div>

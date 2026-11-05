@@ -343,6 +343,27 @@ for (const s of chosen) { jobs.push(startJob(...)); break; }   // ← 注释写�
 * 修好的项要按 `errorText` 从报告里**划掉**再重算汇总 —— 否则刚修完还打印
   「合计：错误 1」，退出码仍是 1，自动更新脚本会一直判 NG（用户看到的就是"修了但没修好"）。
 
+### 12. 独立 OCR 入口：一条不碰「开始备份」的平行链
+
+「想单独补识别图片，但别动已有完整备份和增加备份流程」是这么落地的：
+
+* `webui/index.html` 第 7 步顶部新增独立卡片（`#ocrBox`），`webui/app.js` 的
+  `refreshOcrStatus()` / `runOcrChain()` 只服务它；`btnFetch` 的 `steps` 数组保持原样。
+* 新增只读 `GET /api/ocr/status`（`scripts/lib/ocr_status.mjs`）：只数 `images/` 与
+  `ocr.json` 的文件，口径与 `image_ocr.py` 的 `targets()` 一致，排除 `imported` 会话。
+* 新增写 `POST /api/ocr/run`：位置在 `guardWrite()` 之后，自动享有既有 CSRF 防线；
+  校验会话存在 / 非只读 / `.ocr-env` 就绪，再为每个会话排一个
+  `run_pipeline.mjs --steps ocr`（不含 `fetch` / `faces`，故不需要登录态），
+  链尾再排一个 `build_fts.mjs`，全部走同一个 `serial` 队列。
+* **链尾为什么要重建 FTS**：查看页读 `ocr.js`（写盘即生效），但「搜索备份」读的是
+  `search/dm_search.db`；只跑 OCR 会让后者滞后一整轮。全量重建实测约 1.6 秒。
+* 定期版是 `scripts/ocr_scheduled.ps1` + 两个 `.cmd` 启动器，注册的是**另一个**
+  Windows 计划任务，不修改 `auto_update.ps1` / `schedule_task.ps1`。
+
+回归 `scripts/_explore/verify_ocr_entry.mjs` 同时钉住两件事：新入口真能跑完
+（真起服务 / 真发 HTTP / 真等任务终态 / 真重建索引），以及「开始备份」的两条
+`steps` 数组原样未变。三个既有文件的 diff 全部是 `+` 行、零 `-` 行，可随时复核。
+
 ---
 
 ## 六、实现步骤（按依赖顺序）
