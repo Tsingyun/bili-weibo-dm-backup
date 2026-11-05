@@ -4,12 +4,17 @@
 # 静默装进能读到全部私信图片的 Python 环境（2026-09 隐私审计 M8）。
 #
 # 锁定基准（2026-09-22 在 PyPI 实查）：
-#   · onnxruntime==1.24.1 —— 最后一个支持 Python 3.10 的版本（1.25.0 起要求 >=3.11，
-#     而安装脚本固定用 Python310 的 venv，不锁版本会在未来某天直接装不上）
+#   · onnxruntime==1.23.2 —— **最后一个还提供 Python 3.10 wheel 的版本**。
+#     ⚠ 1.24.1 官方发布说明明确写着「Python 3.10 wheels are no longer published —
+#       Please upgrade to Python 3.11+」（v1.24.1 Platform Support Changes）。
+#       这里曾错锁成 1.24.1、注释还写成「最后一个支持 3.10 的版本」——恰好说反了。
+#       安装脚本固定用 Python310 建 venv，于是 `pip install -r` 永远报
+#       "No matching distribution found"（2026-11-05 实测，清华镜像在 py3.10 下
+#       最高只列到 1.23.2）。要升到 1.24+ 必须同时把安装脚本的 Python 换成 3.11+。
 #   · rapidocr==3.9.2、pillow==12.3.0 —— 当前稳定版，requires_python 均覆盖 3.10
 #
 # 升级步骤：改下面的版本号 -> 实际跑一遍「命令/图片与OCR/安装OCR环境.cmd」
 # （先删掉 .ocr-env 目录重装）-> 确认识别正常后再提交。
 rapidocr==3.9.2
-onnxruntime==1.24.1
+onnxruntime==1.23.2
 pillow==12.3.0
